@@ -1,6 +1,6 @@
 # Net Scan
 
-Prototype Android de diagnostic réseau. Cette version présente uniquement la liste et le formulaire de création : les exemples sont fictifs, les données ne sont pas enregistrées et aucune mesure réseau n'est réalisée.
+Prototype Android de diagnostic réseau. La liste et le formulaire permettent de créer des visites stockées localement avec Room. Le nom du bâtiment est obligatoire ; le client et l'adresse sont facultatifs. Aucune mesure réseau, carte ou rapport n'est encore disponible.
 
 ## Lancer le projet
 
@@ -10,4 +10,4 @@ Ouvrir le projet dans Android Studio avec le SDK Android configuré, puis lancer
 .\gradlew.bat :app:assembleDebug
 ```
 
-L'interface Compose suit le thème clair ou sombre du système. La persistance Room, les préférences utilisateur, la gestion réelle des scans et les mesures sont prévues pour des étapes ultérieures.
+L'interface Compose suit le thème clair ou sombre du système. Les visites restent sur l'appareil, sans synchronisation ni sauvegarde applicative, et sont supprimées lors de la désinstallation ou de l'effacement des données. La base n'est pas chiffrée par l'application ; évitez d'y saisir des informations sensibles avant la mise en place des protections adaptées. Les préférences utilisateur et les mesures restent à implémenter.

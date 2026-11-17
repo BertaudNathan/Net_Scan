@@ -2,9 +2,12 @@ package com.example.MobileM2.Net_Scan.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -12,12 +15,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -25,57 +33,98 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.MobileM2.Net_Scan.R
+import com.example.MobileM2.Net_Scan.domain.Scan
 import com.example.MobileM2.Net_Scan.ui.theme.Design
 import com.example.MobileM2.Net_Scan.ui.theme.DestructiveButton
 import com.example.MobileM2.Net_Scan.ui.theme.PrimaryButton
 import com.example.MobileM2.Net_Scan.ui.theme.TertiaryButton
+import java.text.DateFormat
+import java.util.Date
 
 @Composable
-fun ScanScreen(onExit: () -> Unit, viewModel: ScanListViewModel = viewModel()) {
+fun ScanScreen(onExit: () -> Unit, viewModel: ScanListViewModel) {
     var showCreation by rememberSaveable { mutableStateOf(false) }
     var showExit by rememberSaveable { mutableStateOf(false) }
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val creationState by viewModel.creationState.collectAsStateWithLifecycle()
 
     BackHandler(enabled = !showCreation && !showExit) { showExit = true }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = {
+            Surface(color = MaterialTheme.colorScheme.background) {
+                Box(
+                    modifier = Modifier.fillMaxWidth()
+                        .windowInsetsPadding(
+                            WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+                        )
+                        .padding(horizontal = Design.spaceLarge, vertical = Design.spaceMedium),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    PrimaryButton(
+                        onClick = { showCreation = true },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.new_scan), style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            }
+        },
     ) { insets ->
         Box(
             modifier = Modifier.fillMaxSize().padding(insets),
             contentAlignment = Alignment.TopCenter,
         ) {
             ScanList(
-                state = viewModel.state,
-                onCreate = { showCreation = true },
+                state = state,
+                onRetry = viewModel::retry,
                 modifier = Modifier.widthIn(max = Design.contentWidth).fillMaxSize(),
             )
         }
     }
 
     if (showCreation) {
-        CreateScanDialog(onClose = { showCreation = false })
+        CreateScanDialog(
+            state = creationState,
+            onCreate = viewModel::createScan,
+            onClose = {
+                showCreation = false
+                viewModel.resetCreation()
+            },
+        )
     }
     if (showExit) {
         AlertDialog(
@@ -93,7 +142,11 @@ fun ScanScreen(onExit: () -> Unit, viewModel: ScanListViewModel = viewModel()) {
 }
 
 @Composable
-private fun ScanList(state: ScanListState, onCreate: () -> Unit, modifier: Modifier = Modifier) {
+private fun ScanList(
+    state: ScanListState,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier = modifier.verticalScroll(rememberScrollState()).padding(
             PaddingValues(horizontal = Design.spaceLarge, vertical = Design.spaceLarge),
@@ -129,10 +182,11 @@ private fun ScanList(state: ScanListState, onCreate: () -> Unit, modifier: Modif
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
-
-        PrimaryButton(onClick = onCreate, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.new_scan), style = MaterialTheme.typography.labelLarge)
+            Text(
+                text = stringResource(R.string.feature_scope),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(Design.spaceMedium)) {
@@ -144,31 +198,25 @@ private fun ScanList(state: ScanListState, onCreate: () -> Unit, modifier: Modif
             )
             when (state) {
                 ScanListState.Loading -> {
-                    CircularProgressIndicator()
-                    Text(stringResource(R.string.loading_scans))
+                    CircularProgressIndicator(modifier = Modifier.clearAndSetSemantics {})
+                    Text(
+                        stringResource(R.string.loading_scans),
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    )
                 }
                 ScanListState.Empty -> {
                     Text(stringResource(R.string.empty_title), style = MaterialTheme.typography.titleMedium)
                     Text(stringResource(R.string.empty_description))
                 }
-                ScanListState.Error -> Text(
-                    stringResource(R.string.error_scans),
-                    color = MaterialTheme.colorScheme.error,
-                )
+                ScanListState.Error -> {
+                    Text(
+                        stringResource(R.string.error_scans),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    )
+                    TertiaryButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
+                }
                 is ScanListState.Success -> {
-                    Column(verticalArrangement = Arrangement.spacedBy(Design.spaceExtraSmall)) {
-                        Text(
-                            text = stringResource(R.string.demo_data),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            text = stringResource(R.string.demo_description),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
                     state.scans.forEach { ScanCard(it) }
                 }
             }
@@ -178,12 +226,12 @@ private fun ScanList(state: ScanListState, onCreate: () -> Unit, modifier: Modif
 }
 
 @Composable
-private fun ScanCard(scan: ScanExample) {
+private fun ScanCard(scan: Scan) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {},
         shape = Design.cardShape,
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = Design.spaceExtraSmall,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
     ) {
         Column(
             modifier = Modifier.padding(Design.spaceMedium),
@@ -196,33 +244,31 @@ private fun ScanCard(scan: ScanExample) {
                 BuildingMark()
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = stringResource(scan.name),
+                        text = scan.building,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                     )
-                    Text(
-                        text = stringResource(scan.description),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    if (scan.client.isNotEmpty()) {
+                        Text(
+                            text = scan.client,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
-            Surface(
-                shape = Design.badgeShape,
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-            ) {
+            if (scan.address.isNotEmpty()) {
                 Text(
-                    text = stringResource(scan.status),
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.padding(
-                        horizontal = Design.spaceSmall,
-                        vertical = Design.spaceExtraSmall,
-                    ),
+                    text = scan.address,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Text(
-                text = stringResource(scan.date),
+                text = stringResource(
+                    R.string.created_date,
+                    DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(scan.createdAt)),
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -235,7 +281,8 @@ private fun BuildingMark() {
     val ink = MaterialTheme.colorScheme.onSecondaryContainer
     Box(
         modifier = Modifier.size(Design.touchTarget)
-            .background(MaterialTheme.colorScheme.secondaryContainer, CircleShape),
+            .background(MaterialTheme.colorScheme.secondaryContainer, CircleShape)
+            .clearAndSetSemantics {},
         contentAlignment = Alignment.Center,
     ) {
         Canvas(modifier = Modifier.size(Design.iconSize)) {
@@ -260,18 +307,22 @@ private fun BuildingMark() {
 }
 
 @Composable
-private fun CreateScanDialog(onClose: () -> Unit) {
+private fun CreateScanDialog(
+    state: CreationState,
+    onCreate: (String, String, String) -> Unit,
+    onClose: () -> Unit,
+) {
     var building by rememberSaveable { mutableStateOf("") }
     var client by rememberSaveable { mutableStateOf("") }
     var address by rememberSaveable { mutableStateOf("") }
     var showDiscard by rememberSaveable { mutableStateOf(false) }
-    var showNotice by rememberSaveable { mutableStateOf(false) }
-    val fieldColors = OutlinedTextFieldDefaults.colors(
-        focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    val invalidBuilding = state == CreationState.InvalidBuilding && building.isBlank()
+    val focusRequester = remember { FocusRequester() }
+    val requiredMessage = stringResource(R.string.building_required)
+    val dialogTitle = stringResource(R.string.dialog_title)
 
     fun requestClose() {
+        if (state == CreationState.Saving) return
         if (building.isNotBlank() || client.isNotBlank() || address.isNotBlank()) {
             showDiscard = true
         } else {
@@ -279,57 +330,128 @@ private fun CreateScanDialog(onClose: () -> Unit) {
         }
     }
 
-    AlertDialog(
+    LaunchedEffect(state) {
+        if (state == CreationState.Saved) onClose()
+        if (state == CreationState.InvalidBuilding) focusRequester.requestFocus()
+    }
+
+    Dialog(
         onDismissRequest = ::requestClose,
-        title = { Text(stringResource(R.string.dialog_title)) },
-        text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(Design.spaceMedium),
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .imePadding(),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            Box(
+                modifier = Modifier.matchParentSize().pointerInput(building, client, address, state) {
+                    detectTapGestures { requestClose() }
+                },
+            )
+            Surface(
+                modifier = Modifier.fillMaxWidth()
+                    .heightIn(max = maxHeight)
+                    .semantics { paneTitle = dialogTitle }
+                    .pointerInput(Unit) {
+                        // Keep taps inside the sheet from reaching the dismissible backdrop.
+                        awaitPointerEventScope {
+                            while (true) awaitPointerEvent()
+                        }
+                    },
+                shape = Design.cardShape,
+                color = MaterialTheme.colorScheme.surface,
             ) {
-                Text(stringResource(R.string.dialog_description))
-                OutlinedTextField(
-                    value = building,
-                    onValueChange = { building = it },
-                    label = { Text(stringResource(R.string.building_name)) },
-                    placeholder = { Text(stringResource(R.string.building_hint)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = fieldColors,
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = client,
-                    onValueChange = { client = it },
-                    label = { Text(stringResource(R.string.client_name)) },
-                    placeholder = { Text(stringResource(R.string.client_hint)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = fieldColors,
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = address,
-                    onValueChange = { address = it },
-                    label = { Text(stringResource(R.string.address)) },
-                    placeholder = { Text(stringResource(R.string.address_hint)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = fieldColors,
-                    singleLine = true,
-                )
-                Text(
-                    text = stringResource(if (showNotice) R.string.prototype_notice else R.string.form_illustration_note),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                )
+                Column {
+                    Column(
+                        modifier = Modifier.weight(1f, fill = false)
+                            .align(Alignment.CenterHorizontally)
+                            .widthIn(max = Design.contentWidth)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .padding(
+                                start = Design.spaceLarge,
+                                end = Design.spaceLarge,
+                                top = Design.spaceMedium,
+                            ),
+                        verticalArrangement = Arrangement.spacedBy(Design.spaceMedium),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(Design.spaceSmall),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = dialogTitle,
+                                style = MaterialTheme.typography.headlineSmall,
+                                modifier = Modifier.weight(1f).semantics { heading() },
+                            )
+                            TertiaryButton(onClick = ::requestClose, enabled = state != CreationState.Saving) {
+                                Text(stringResource(R.string.cancel))
+                            }
+                        }
+                        Text(stringResource(R.string.dialog_description))
+                        OutlinedTextField(
+                            value = building,
+                            onValueChange = { building = it },
+                            label = { Text(stringResource(R.string.building_name)) },
+                            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
+                                .semantics { if (invalidBuilding) error(requiredMessage) },
+                            enabled = state != CreationState.Saving,
+                            singleLine = true,
+                            isError = invalidBuilding,
+                            supportingText = if (invalidBuilding) {
+                                {
+                                    Text(
+                                        requiredMessage,
+                                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
+                                    )
+                                }
+                            } else null,
+                        )
+                        OutlinedTextField(
+                            value = client,
+                            onValueChange = { client = it },
+                            label = { Text(stringResource(R.string.client_name)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = state != CreationState.Saving,
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            value = address,
+                            onValueChange = { address = it },
+                            label = { Text(stringResource(R.string.address)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = state != CreationState.Saving,
+                            singleLine = true,
+                        )
+                        if (state == CreationState.Error) {
+                            Text(
+                                text = stringResource(R.string.save_error),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
+                            )
+                        }
+                        if (state == CreationState.Saving) {
+                            Text(
+                                text = stringResource(R.string.saving),
+                                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                            )
+                        }
+                    }
+                    PrimaryButton(
+                        onClick = { onCreate(building, client, address) },
+                        modifier = Modifier.fillMaxWidth().padding(Design.spaceLarge),
+                        enabled = state != CreationState.Saving,
+                    ) {
+                        Text(stringResource(R.string.create_scan))
+                    }
+                }
             }
-        },
-        confirmButton = {
-            PrimaryButton(onClick = { showNotice = true }) { Text(stringResource(R.string.create_scan)) }
-        },
-        dismissButton = {
-            TertiaryButton(onClick = ::requestClose) { Text(stringResource(R.string.cancel)) }
-        },
-    )
+        }
+    }
 
     if (showDiscard) {
         AlertDialog(
@@ -340,7 +462,9 @@ private fun CreateScanDialog(onClose: () -> Unit) {
                 DestructiveButton(onClick = onClose) { Text(stringResource(R.string.discard)) }
             },
             dismissButton = {
-                TertiaryButton(onClick = { showDiscard = false }) { Text(stringResource(R.string.keep_editing)) }
+                TertiaryButton(onClick = { showDiscard = false }) {
+                    Text(stringResource(R.string.keep_editing))
+                }
             },
         )
     }

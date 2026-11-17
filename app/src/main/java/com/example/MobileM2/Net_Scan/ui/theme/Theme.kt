@@ -23,7 +23,7 @@ private val DarkOutline = Color(0xFF9BA99C)
 private val ErrorLight = Color(0xFFB3261E)
 private val ErrorDark = Color(0xFFFFB4AB)
 
-private val LightColors = lightColorScheme(
+internal val LightColors = lightColorScheme(
     primary = Navy,
     onPrimary = White,
     primaryContainer = Green,
@@ -44,7 +44,7 @@ private val LightColors = lightColorScheme(
     onError = White,
 )
 
-private val DarkColors = darkColorScheme(
+internal val DarkColors = darkColorScheme(
     primary = Green,
     onPrimary = Navy,
     primaryContainer = Navy,

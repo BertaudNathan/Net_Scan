@@ -7,6 +7,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.MobileM2.Net_Scan.data.RoomScanRepository
+import com.example.MobileM2.Net_Scan.data.ScanDatabase
+import com.example.MobileM2.Net_Scan.ui.ScanListViewModel
 import com.example.MobileM2.Net_Scan.ui.ScanScreen
 import com.example.MobileM2.Net_Scan.ui.theme.NetScanTheme
 
@@ -24,7 +30,16 @@ class MainActivity : ComponentActivity() {
                     startDestination = SCANS_ROUTE
                 ) {
                     composable(SCANS_ROUTE) {
-                        ScanScreen(onExit = ::finish)
+                        val scanViewModel: ScanListViewModel = viewModel(
+                            factory = viewModelFactory {
+                                initializer {
+                                    ScanListViewModel(
+                                        RoomScanRepository(ScanDatabase.getInstance(applicationContext).scanDao()),
+                                    )
+                                }
+                            },
+                        )
+                        ScanScreen(onExit = ::finish, viewModel = scanViewModel)
                     }
                 }
             }
