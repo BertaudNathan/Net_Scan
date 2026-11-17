@@ -10,4 +10,4 @@ Ouvrir le projet dans Android Studio avec le SDK Android configuré, puis lancer
 .\gradlew.bat :app:assembleDebug
 ```
 
-L'interface Compose suit le thème clair ou sombre du système. Les visites restent sur l'appareil, sans synchronisation ni sauvegarde applicative, et sont supprimées lors de la désinstallation ou de l'effacement des données. La base n'est pas chiffrée par l'application ; évitez d'y saisir des informations sensibles avant la mise en place des protections adaptées. Les préférences utilisateur et les mesures restent à implémenter.
+Le thème peut être réglé sur clair, sombre ou automatique selon le système dans les préférences ; ce choix est conservé localement. Les visites et préférences restent sur l'appareil, sans synchronisation ni sauvegarde applicative, et sont supprimées lors de la désinstallation ou de l'effacement des données. La base n'est pas chiffrée par l'application ; évitez d'y saisir des informations sensibles avant la mise en place des protections adaptées. Les mesures restent à implémenter.

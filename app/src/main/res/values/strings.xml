@@ -30,4 +30,15 @@
     <string name="exit_message">Voulez-vous vraiment quitter l’application ?</string>
     <string name="exit">Quitter</string>
     <string name="stay">Rester</string>
+    <string name="open_preferences">Ouvrir les préférences</string>
+    <string name="preferences_title">Préférences</string>
+    <string name="back_to_scans">Retour à la liste des scans</string>
+    <string name="theme_title">Thème</string>
+    <string name="theme_description">Choisissez l’apparence de l’application.</string>
+    <string name="theme_system">Suivre le système</string>
+    <string name="theme_light">Clair</string>
+    <string name="theme_dark">Sombre</string>
+    <string name="theme_load_error">Impossible de charger les préférences.</string>
+    <string name="loading_preferences">Chargement des préférences…</string>
+    <string name="theme_save_error">Impossible d’enregistrer le thème. Réessayez.</string>
 </resources>

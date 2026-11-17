@@ -8,6 +8,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.example.MobileM2.Net_Scan.domain.ThemeMode
 
 private val Navy = Color(0xFF0F056B)
 private val Green = Color(0xFFA7D7A9)
@@ -79,9 +80,14 @@ object Design {
 }
 
 @Composable
-fun NetScanTheme(content: @Composable () -> Unit) {
+fun NetScanTheme(theme: ThemeMode = ThemeMode.SYSTEM, content: @Composable () -> Unit) {
+    val dark = when (theme) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
     MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors,
+        colorScheme = if (dark) DarkColors else LightColors,
         content = content,
     )
 }

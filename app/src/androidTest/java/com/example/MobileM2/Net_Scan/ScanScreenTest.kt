@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
@@ -61,7 +62,11 @@ class ScanScreenTest {
         context.deleteDatabase(databaseName)
     }
 
-    private fun showScreen(fontScale: Float = 1f, direction: LayoutDirection = LayoutDirection.Ltr) {
+    private fun showScreen(
+        fontScale: Float = 1f,
+        direction: LayoutDirection = LayoutDirection.Ltr,
+        onPreferences: () -> Unit = {},
+    ) {
         val viewModel = ScanListViewModel(RoomScanRepository(db.scanDao()))
         compose.setContent {
             val density = LocalDensity.current
@@ -69,12 +74,24 @@ class ScanScreenTest {
                 LocalDensity provides Density(density.density, fontScale),
                 LocalLayoutDirection provides direction,
             ) {
-                NetScanTheme { ScanScreen(onExit = {}, viewModel = viewModel) }
+                NetScanTheme { ScanScreen(onExit = {}, onPreferences = onPreferences, viewModel = viewModel) }
             }
+
         }
         compose.waitUntil(10_000) {
             compose.onAllNodesWithText(text(R.string.empty_title)).fetchSemanticsNodes().isNotEmpty()
         }
+    }
+
+    @Test fun settingsButtonIsAccessibleAndOpensPreferences() {
+        var opened = false
+        showScreen(onPreferences = { opened = true })
+        compose.onNodeWithContentDescription(text(R.string.open_preferences))
+            .assertIsDisplayed()
+            .assertHeightIsAtLeast(48.dp)
+            .assertWidthIsAtLeast(48.dp)
+            .performClick()
+        compose.runOnIdle { assertTrue(opened) }
     }
 
     @Test fun primaryActionIsInTheBottomThumbZoneWithLargeTouchTarget() {

@@ -32,10 +32,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -73,7 +77,7 @@ import java.text.DateFormat
 import java.util.Date
 
 @Composable
-fun ScanScreen(onExit: () -> Unit, viewModel: ScanListViewModel) {
+fun ScanScreen(onExit: () -> Unit, onPreferences: () -> Unit, viewModel: ScanListViewModel) {
     var showCreation by rememberSaveable { mutableStateOf(false) }
     var showExit by rememberSaveable { mutableStateOf(false) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -111,6 +115,7 @@ fun ScanScreen(onExit: () -> Unit, viewModel: ScanListViewModel) {
             ScanList(
                 state = state,
                 onRetry = viewModel::retry,
+                onPreferences = onPreferences,
                 modifier = Modifier.widthIn(max = Design.contentWidth).fillMaxSize(),
             )
         }
@@ -145,6 +150,7 @@ fun ScanScreen(onExit: () -> Unit, viewModel: ScanListViewModel) {
 private fun ScanList(
     state: ScanListState,
     onRetry: () -> Unit,
+    onPreferences: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -154,6 +160,13 @@ private fun ScanList(
         verticalArrangement = Arrangement.spacedBy(Design.spaceLarge),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onPreferences, modifier = Modifier.size(Design.touchTarget)) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = stringResource(R.string.open_preferences),
+                )
+            }
+            Spacer(Modifier.width(Design.spaceSmall))
             BuildingMark()
             Spacer(Modifier.width(Design.spaceSmall))
             Column {
