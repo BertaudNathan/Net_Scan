@@ -48,6 +48,7 @@ class VisitListScreenTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
     private lateinit var db: AppDatabase
     private lateinit var databaseName: String
+    private var openedVisit: Long? = null
 
     private fun text(id: Int) = context.getString(id)
 
@@ -69,7 +70,7 @@ class VisitListScreenTest {
                 LocalDensity provides Density(density.density, fontScale),
                 LocalLayoutDirection provides direction,
             ) {
-                NetScanTheme { VisitListScreen(onExit = {}, viewModel = viewModel) }
+                NetScanTheme { VisitListScreen(onExit = {}, onOpenVisit = { openedVisit = it }, viewModel = viewModel) }
             }
         }
         compose.waitUntil(10_000) {
@@ -115,6 +116,19 @@ class VisitListScreenTest {
         }
         compose.onNodeWithText("Magasin").assertIsDisplayed()
         compose.onNodeWithText("Client").assertIsDisplayed()
+    }
+
+    @Test fun tappingAVisitOpensIt() {
+        showScreen()
+        compose.onNodeWithText(text(R.string.new_scan)).performClick()
+        compose.onNodeWithText(text(R.string.building_name)).performTextInput("Magasin")
+        compose.onNodeWithText(text(R.string.create_scan)).performClick()
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithText("Magasin").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("Magasin").performClick()
+        val id = runBlocking { db.visitDao().observeAll().first().single().id }
+        assertEquals(id, openedVisit)
     }
 
     @Test fun requiresBuildingName() {

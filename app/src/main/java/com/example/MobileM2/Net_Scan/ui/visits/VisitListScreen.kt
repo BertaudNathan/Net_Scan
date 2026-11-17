@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,12 +46,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.error
@@ -73,7 +76,7 @@ import java.text.DateFormat
 import java.util.Date
 
 @Composable
-fun VisitListScreen(onExit: () -> Unit, viewModel: VisitListViewModel) {
+fun VisitListScreen(onExit: () -> Unit, onOpenVisit: (Long) -> Unit, viewModel: VisitListViewModel) {
     var showCreation by rememberSaveable { mutableStateOf(false) }
     var showExit by rememberSaveable { mutableStateOf(false) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -111,6 +114,7 @@ fun VisitListScreen(onExit: () -> Unit, viewModel: VisitListViewModel) {
             VisitList(
                 state = state,
                 onRetry = viewModel::retry,
+                onOpenVisit = onOpenVisit,
                 modifier = Modifier.widthIn(max = Design.contentWidth).fillMaxSize(),
             )
         }
@@ -145,6 +149,7 @@ fun VisitListScreen(onExit: () -> Unit, viewModel: VisitListViewModel) {
 private fun VisitList(
     state: VisitListState,
     onRetry: () -> Unit,
+    onOpenVisit: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -217,7 +222,7 @@ private fun VisitList(
                     TertiaryButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
                 }
                 is VisitListState.Success -> {
-                    state.visits.forEach { VisitCard(it) }
+                    state.visits.forEach { visit -> VisitCard(visit, onClick = { onOpenVisit(visit.id) }) }
                 }
             }
         }
@@ -226,9 +231,11 @@ private fun VisitList(
 }
 
 @Composable
-private fun VisitCard(visit: Visit) {
+private fun VisitCard(visit: Visit, onClick: () -> Unit) {
     Surface(
-        modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {},
+        modifier = Modifier.fillMaxWidth()
+            .clip(Design.cardShape)
+            .clickable(onClickLabel = stringResource(R.string.open_visit), role = Role.Button, onClick = onClick),
         shape = Design.cardShape,
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),

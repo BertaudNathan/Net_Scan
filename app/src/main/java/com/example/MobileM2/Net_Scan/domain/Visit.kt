@@ -12,5 +12,6 @@ data class Visit(
 
 interface VisitRepository {
     fun observeVisits(): Flow<List<Visit>>
+    fun observeVisit(id: Long): Flow<Visit?>
     suspend fun createVisit(building: String, client: String, address: String)
 }

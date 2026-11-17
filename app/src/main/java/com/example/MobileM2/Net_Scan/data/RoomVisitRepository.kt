@@ -6,9 +6,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 class RoomVisitRepository(private val dao: VisitDao) : VisitRepository {
-    override fun observeVisits(): Flow<List<Visit>> = dao.observeAll().map { rows ->
-        rows.map { Visit(it.id, it.building, it.client, it.address, it.createdAt) }
-    }
+    override fun observeVisits(): Flow<List<Visit>> = dao.observeAll().map { rows -> rows.map { it.toDomain() } }
+
+    override fun observeVisit(id: Long): Flow<Visit?> = dao.observeById(id).map { it?.toDomain() }
 
     override suspend fun createVisit(building: String, client: String, address: String) {
         dao.insert(
@@ -20,4 +20,6 @@ class RoomVisitRepository(private val dao: VisitDao) : VisitRepository {
             ),
         )
     }
+
+    private fun VisitEntity.toDomain() = Visit(id, building, client, address, createdAt)
 }

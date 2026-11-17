@@ -7,6 +7,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -77,6 +78,8 @@ class VisitListViewModelTest {
 
         override fun observeVisits(): Flow<List<Visit>> =
             if (failLoad) flow { throw IllegalStateException("test") } else visits
+
+        override fun observeVisit(id: Long): Flow<Visit?> = visits.map { list -> list.firstOrNull { it.id == id } }
 
         override suspend fun createVisit(building: String, client: String, address: String) {
             if (failSave) throw IllegalStateException("test")
