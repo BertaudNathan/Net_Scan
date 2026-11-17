@@ -26,10 +26,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.example.MobileM2.Net_Scan.data.RoomScanRepository
-import com.example.MobileM2.Net_Scan.data.ScanDatabase
-import com.example.MobileM2.Net_Scan.ui.ScanListViewModel
-import com.example.MobileM2.Net_Scan.ui.ScanScreen
+import com.example.MobileM2.Net_Scan.data.RoomVisitRepository
+import com.example.MobileM2.Net_Scan.data.AppDatabase
+import com.example.MobileM2.Net_Scan.ui.visits.VisitListViewModel
+import com.example.MobileM2.Net_Scan.ui.visits.VisitListScreen
 import com.example.MobileM2.Net_Scan.ui.theme.NetScanTheme
 import android.content.Context
 import kotlinx.coroutines.runBlocking
@@ -44,17 +44,18 @@ import org.junit.runner.RunWith
 import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
-class ScanScreenTest {
+class VisitListScreenTest {
     @get:Rule val compose = createComposeRule()
     private val context: Context = ApplicationProvider.getApplicationContext()
-    private lateinit var db: ScanDatabase
+    private lateinit var db: AppDatabase
     private lateinit var databaseName: String
+    private var openedVisit: Long? = null
 
     private fun text(id: Int) = context.getString(id)
 
     @Before fun setup() {
-        databaseName = "scan-test-${UUID.randomUUID()}.db"
-        db = Room.databaseBuilder(context, ScanDatabase::class.java, databaseName).build()
+        databaseName = "visit-test-${UUID.randomUUID()}.db"
+        db = Room.databaseBuilder(context, AppDatabase::class.java, databaseName).build()
     }
 
     @After fun tearDown() {
@@ -67,14 +68,21 @@ class ScanScreenTest {
         direction: LayoutDirection = LayoutDirection.Ltr,
         onPreferences: () -> Unit = {},
     ) {
-        val viewModel = ScanListViewModel(RoomScanRepository(db.scanDao()))
+        val viewModel = VisitListViewModel(RoomVisitRepository(db.visitDao()))
         compose.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(
                 LocalDensity provides Density(density.density, fontScale),
                 LocalLayoutDirection provides direction,
             ) {
-                NetScanTheme { ScanScreen(onExit = {}, onPreferences = onPreferences, viewModel = viewModel) }
+                NetScanTheme {
+                    VisitListScreen(
+                        onExit = {},
+                        onPreferences = onPreferences,
+                        onOpenVisit = { openedVisit = it },
+                        viewModel = viewModel,
+                    )
+                }
             }
 
         }
@@ -121,7 +129,7 @@ class ScanScreenTest {
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.Error, text(R.string.building_required)))
     }
 
-    @Test fun savesAndDisplaysScan() {
+    @Test fun savesAndDisplaysVisit() {
         showScreen()
         compose.onNodeWithText(text(R.string.new_scan)).performClick()
         compose.onNodeWithText(text(R.string.building_name)).performTextInput("Magasin")
@@ -132,6 +140,19 @@ class ScanScreenTest {
         }
         compose.onNodeWithText("Magasin").assertIsDisplayed()
         compose.onNodeWithText("Client").assertIsDisplayed()
+    }
+
+    @Test fun tappingAVisitOpensIt() {
+        showScreen()
+        compose.onNodeWithText(text(R.string.new_scan)).performClick()
+        compose.onNodeWithText(text(R.string.building_name)).performTextInput("Magasin")
+        compose.onNodeWithText(text(R.string.create_scan)).performClick()
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithText("Magasin").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("Magasin").performClick()
+        val id = runBlocking { db.visitDao().observeAll().first().single().id }
+        assertEquals(id, openedVisit)
     }
 
     @Test fun requiresBuildingName() {
@@ -183,13 +204,13 @@ class ScanScreenTest {
     }
 
     @Test fun databaseSurvivesReopening() = runBlocking {
-        val repository = RoomScanRepository(db.scanDao())
-        repository.createScan("Entrepôt", "Client", "Adresse")
+        val repository = RoomVisitRepository(db.visitDao())
+        repository.createVisit("Entrepôt", "Client", "Adresse")
         db.close()
-        db = Room.databaseBuilder(context, ScanDatabase::class.java, databaseName).build()
-        val scan = db.scanDao().observeAll().first().single()
-        assertEquals("Entrepôt", scan.building)
-        assertEquals("Client", scan.client)
-        assertEquals("Adresse", scan.address)
+        db = Room.databaseBuilder(context, AppDatabase::class.java, databaseName).build()
+        val visit = db.visitDao().observeAll().first().single()
+        assertEquals("Entrepôt", visit.building)
+        assertEquals("Client", visit.client)
+        assertEquals("Adresse", visit.address)
     }
 }

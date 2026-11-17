@@ -5,7 +5,7 @@
     <string name="scans_description">Retrouvez vos visites et préparez votre prochain diagnostic.</string>
     <string name="new_scan">Nouveau scan</string>
     <string name="list_heading">Vos scans</string>
-    <string name="feature_scope">Prototype : les visites sont enregistrées sur cet appareil. Le diagnostic réseau n’est pas encore disponible.</string>
+    <string name="feature_scope">Prototype : les visites et les scans réseau sont enregistrés sur cet appareil. La cartographie ARCore et le rapport ne sont pas encore disponibles.</string>
     <string name="created_date">Créé le %1$s</string>
     <string name="empty_title">Aucun scan pour le moment</string>
     <string name="empty_description">Commencez par créer une visite pour un bâtiment.</string>
@@ -41,4 +41,92 @@
     <string name="theme_load_error">Impossible de charger les préférences.</string>
     <string name="loading_preferences">Chargement des préférences…</string>
     <string name="theme_save_error">Impossible d’enregistrer le thème. Réessayez.</string>
+
+    <string name="open_visit">Ouvrir la visite</string>
+
+    <!-- Écran d'une visite : aperçu, carte, scan réseau, enregistrement -->
+    <string name="map_scan_close">Fermer la visite</string>
+    <string name="visit_loading">Chargement de la visite…</string>
+    <string name="visit_missing">Cette visite n’existe plus.</string>
+    <string name="visit_error">Impossible d’afficher la visite.</string>
+    <string name="close">Fermer</string>
+    <string name="simulated_data">Données simulées</string>
+    <string name="prototype_badge">Prototype</string>
+
+    <string name="operator_loading">Recherche de l’opérateur…</string>
+    <string name="operator_unknown_name">Opérateur inconnu</string>
+    <string name="operator_with_technology">%1$s · %2$s</string>
+    <string name="operator_no_service">Pas de service</string>
+    <string name="operator_no_sim">Aucune SIM utilisable</string>
+    <string name="operator_radio_off">Mode avion</string>
+    <string name="operator_unavailable">Réseau mobile indisponible</string>
+    <string name="technology_2g">2G</string>
+    <string name="technology_3g">3G</string>
+    <string name="technology_4g">4G</string>
+    <string name="technology_5g">5G</string>
+
+    <string name="camera_preview_description">Aperçu de la caméra</string>
+    <string name="camera_enable">Activer la caméra</string>
+    <string name="camera_settings">Autoriser dans les réglages</string>
+    <string name="camera_unavailable">Caméra indisponible</string>
+
+    <string name="map_placeholder_title">Cartographie ARCore</string>
+    <string name="map_placeholder_body">Bientôt disponible : la carte du bâtiment se construira pendant l’enregistrement.</string>
+    <string name="map_placeholder_recording">Enregistrement en cours. Le parcours n’est pas encore cartographié.</string>
+
+    <string name="record_start">Démarrer l’enregistrement</string>
+    <string name="record_stop">Arrêter l’enregistrement</string>
+    <string name="recording_indicator">REC %1$s</string>
+    <string name="recording_indicator_description">Enregistrement en cours depuis %1$s</string>
+
+    <string name="net_scan_start">Scan réseau</string>
+    <string name="net_scan_mode_timer">Minuteur : %1$d s</string>
+    <string name="net_scan_mode_free">Chrono libre</string>
+    <string name="net_scan_mode_timer_item">Minuteur %1$d s</string>
+    <string name="net_scan_mode_free_item">Chrono libre (%1$d s minimum)</string>
+    <string name="net_scan_running">Scan réseau en cours</string>
+    <string name="net_scan_measuring">Mesure en cours…</string>
+    <string name="net_scan_remaining">Temps restant : %1$s</string>
+    <string name="net_scan_elapsed">Durée : %1$s</string>
+    <string name="net_scan_min_duration">Terminer possible après %1$d s</string>
+    <string name="net_scan_finish">Terminer</string>
+    <string name="net_scan_result">Résultat du scan réseau</string>
+    <string name="net_scan_saving">Enregistrement du résultat…</string>
+    <string name="net_scan_saved">Résultat enregistré dans la visite.</string>
+    <string name="net_scan_save_error">Le résultat n’a pas pu être enregistré.</string>
+    <string name="net_scan_discard_result">Abandonner le résultat</string>
+    <plurals name="net_scan_result_basis">
+        <item quantity="one">Médiane de %1$d mesure sur %2$s</item>
+        <item quantity="other">Médiane de %1$d mesures sur %2$s</item>
+    </plurals>
+
+    <string name="level_none">Inexistant</string>
+    <string name="level_low">Faible</string>
+    <string name="level_medium">Moyen</string>
+    <string name="level_high">Haut</string>
+    <string name="level_description">Niveau du signal : %1$s</string>
+
+    <string name="details_show">Afficher les détails techniques</string>
+    <string name="details_hide">Masquer les détails techniques</string>
+    <string name="detail_technology">Technologie</string>
+    <string name="detail_rsrp">RSRP médian</string>
+    <string name="detail_sinr">SINR médian</string>
+    <string name="detail_band">Bande</string>
+    <string name="detail_cell">Cellule</string>
+    <string name="detail_samples">Mesures</string>
+    <string name="detail_unavailable">Indisponible</string>
+    <string name="unit_dbm">%1$s dBm</string>
+    <string name="unit_db">%1$s dB</string>
+
+    <string name="problem_permission">Autorisez la localisation précise et l’accès au téléphone pour mesurer le réseau.</string>
+    <string name="problem_no_telephony">Cet appareil ne permet pas de mesurer le réseau mobile.</string>
+    <string name="problem_no_sim">Insérez une carte SIM active pour mesurer le réseau.</string>
+    <string name="problem_airplane">Désactivez le mode avion pour mesurer le réseau.</string>
+    <string name="problem_location">Activez la localisation du téléphone : Android l’exige pour lire les informations de la cellule.</string>
+    <string name="problem_no_data">Aucune donnée radio reçue pendant le scan.</string>
+    <string name="problem_signal_error">La lecture du réseau a échoué.</string>
+    <string name="open_settings">Ouvrir les réglages</string>
+
+    <string name="leave_visit_title">Quitter la visite ?</string>
+    <string name="leave_visit_message">L’enregistrement et le scan réseau en cours seront arrêtés. Un scan réseau non terminé n’est pas conservé.</string>
 </resources>

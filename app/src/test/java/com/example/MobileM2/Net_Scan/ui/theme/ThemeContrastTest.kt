@@ -28,6 +28,18 @@ class ThemeContrastTest {
         }
     }
 
+    @Test fun signalLevelLabelsStayReadable() {
+        listOf(SignalColors.high, SignalColors.medium, SignalColors.low, SignalColors.none).forEach {
+            assertContrast(it.content, it.container)
+        }
+    }
+
+    @Test fun recordButtonSymbolsStandOut() {
+        assertContrast(RecordColors.start, RecordColors.container, minimum = 3f)
+        assertContrast(RecordColors.stop, RecordColors.container, minimum = 3f)
+        assertContrast(RecordColors.ring, RecordColors.container, minimum = 3f)
+    }
+
     private fun assertContrast(foreground: Color, background: Color, minimum: Float = 4.5f) {
         val first = foreground.luminance()
         val second = background.luminance()

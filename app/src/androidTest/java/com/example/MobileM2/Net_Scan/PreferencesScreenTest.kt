@@ -26,7 +26,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.MobileM2.Net_Scan.data.RoomThemeRepository
-import com.example.MobileM2.Net_Scan.data.ScanDatabase
+import com.example.MobileM2.Net_Scan.data.AppDatabase
 import com.example.MobileM2.Net_Scan.domain.ThemeMode
 import com.example.MobileM2.Net_Scan.ui.PreferencesScreen
 import com.example.MobileM2.Net_Scan.ui.PreferencesState
@@ -49,7 +49,7 @@ class PreferencesScreenTest {
     @get:Rule val compose = createComposeRule()
     private val context: Context = ApplicationProvider.getApplicationContext()
     private lateinit var databaseName: String
-    private lateinit var db: ScanDatabase
+    private lateinit var db: AppDatabase
 
     @Before fun setup() {
         databaseName = "preferences-test-${UUID.randomUUID()}.db"
@@ -61,8 +61,8 @@ class PreferencesScreenTest {
         context.deleteDatabase(databaseName)
     }
 
-    private fun openDatabase(): ScanDatabase = Room.databaseBuilder(context, ScanDatabase::class.java, databaseName)
-        .addMigrations(ScanDatabase.MIGRATION_1_2)
+    private fun openDatabase(): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
+        .addMigrations(*AppDatabase.MIGRATIONS)
         .build()
 
     private fun text(id: Int) = context.getString(id)
@@ -110,7 +110,7 @@ class PreferencesScreenTest {
         assertEquals(ThemeMode.DARK, runBlocking { RoomThemeRepository(db.preferencesDao()).observeTheme().first() })
     }
 
-    @Test fun migrationPreservesScansAndDefaultsThemeToSystem() = runBlocking {
+    @Test fun migrationPreservesVisitsAndDefaultsThemeToSystem() = runBlocking {
         db.close()
         context.openOrCreateDatabase(databaseName, Context.MODE_PRIVATE, null).use { sqlite ->
             sqlite.execSQL(
@@ -122,7 +122,7 @@ class PreferencesScreenTest {
             sqlite.version = 1
         }
         db = openDatabase()
-        assertEquals("Magasin", db.scanDao().observeAll().first().single().building)
+        assertEquals("Magasin", db.visitDao().observeAll().first().single().building)
         assertEquals(ThemeMode.SYSTEM, RoomThemeRepository(db.preferencesDao()).observeTheme().first())
     }
 
