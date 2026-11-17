@@ -29,7 +29,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.MobileM2.Net_Scan.data.AppDatabase
 import com.example.MobileM2.Net_Scan.data.RoomNetScanRepository
-import com.example.MobileM2.Net_Scan.data.RoomThemeRepository
+import com.example.MobileM2.Net_Scan.data.RoomPreferencesRepository
 import com.example.MobileM2.Net_Scan.data.RoomVisitRepository
 import com.example.MobileM2.Net_Scan.data.signal.TelephonySignalSource
 import com.example.MobileM2.Net_Scan.domain.ThemeMode
@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val preferences: PreferencesViewModel = viewModel(
                 factory = viewModelFactory {
-                    initializer { PreferencesViewModel(RoomThemeRepository(database.preferencesDao())) }
+                    initializer { PreferencesViewModel(RoomPreferencesRepository(database.preferencesDao())) }
                 },
             )
             val state by preferences.state.collectAsStateWithLifecycle()
@@ -104,8 +104,16 @@ class MainActivity : ComponentActivity() {
                                 )
                                 VisitListScreen(
                                     onExit = ::finish,
-                                    onPreferences = { navController.navigate(PREFERENCES_ROUTE) },
-                                    onOpenVisit = { id -> navController.navigate("visits/$id") },
+                                    onPreferences = {
+                                        if (navController.currentDestination?.route == VISITS_ROUTE) {
+                                            navController.navigate(PREFERENCES_ROUTE) { launchSingleTop = true }
+                                        }
+                                    },
+                                    onOpenVisit = { id ->
+                                        if (navController.currentDestination?.route == VISITS_ROUTE) {
+                                            navController.navigate("visits/$id") { launchSingleTop = true }
+                                        }
+                                    },
                                     viewModel = visitListViewModel,
                                 )
                             }
@@ -113,7 +121,8 @@ class MainActivity : ComponentActivity() {
                                 PreferencesScreen(
                                     state = current,
                                     onThemeSelected = preferences::setTheme,
-                                    onBack = { navController.popBackStack() },
+                                    onHandednessSelected = preferences::setHandedness,
+                                    onBack = { navController.popBackStack(VISITS_ROUTE, inclusive = false) },
                                 )
                             }
                             composable(
@@ -135,7 +144,8 @@ class MainActivity : ComponentActivity() {
                                 )
                                 MapScanScreen(
                                     viewModel = mapScanViewModel,
-                                    onClose = { navController.popBackStack() },
+                                    onClose = { navController.popBackStack(VISITS_ROUTE, inclusive = false) },
+                                    handedness = current.handedness,
                                 )
                             }
                         }

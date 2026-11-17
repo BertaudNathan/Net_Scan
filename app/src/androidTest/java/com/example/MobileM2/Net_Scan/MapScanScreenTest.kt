@@ -3,6 +3,10 @@ package com.example.MobileM2.Net_Scan
 import android.Manifest
 import android.content.Context
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
@@ -14,9 +18,13 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -26,6 +34,12 @@ import com.example.MobileM2.Net_Scan.data.RoomNetScanRepository
 import com.example.MobileM2.Net_Scan.data.RoomVisitRepository
 import com.example.MobileM2.Net_Scan.data.signal.SimulatedSignalSource
 import com.example.MobileM2.Net_Scan.domain.SignalAvailability
+import com.example.MobileM2.Net_Scan.domain.Handedness
+import com.example.MobileM2.Net_Scan.domain.NetScan
+import com.example.MobileM2.Net_Scan.domain.NetScanMode
+import com.example.MobileM2.Net_Scan.domain.NetScanSummary
+import com.example.MobileM2.Net_Scan.domain.NetworkTechnology
+import com.example.MobileM2.Net_Scan.domain.SignalLevel
 import com.example.MobileM2.Net_Scan.ui.mapscan.MapScanScreen
 import com.example.MobileM2.Net_Scan.ui.mapscan.MapScanViewModel
 import com.example.MobileM2.Net_Scan.ui.theme.NetScanTheme
@@ -66,7 +80,12 @@ class MapScanScreenTest {
 
     @After fun tearDown() { db.close() }
 
-    private fun showScreen(source: SimulatedSignalSource = SimulatedSignalSource()) {
+    private fun showScreen(
+        source: SimulatedSignalSource = SimulatedSignalSource(),
+        handedness: Handedness = Handedness.RIGHT,
+        direction: LayoutDirection = LayoutDirection.Ltr,
+        fontScale: Float = 1f,
+    ) {
         val viewModel = MapScanViewModel(
             visitId,
             RoomVisitRepository(db.visitDao()),
@@ -74,8 +93,14 @@ class MapScanScreenTest {
             source,
         )
         compose.setContent {
-            NetScanTheme {
-                MapScanScreen(viewModel = viewModel, onClose = { closed = true }, cameraPreview = { Box(it) })
+            val density = LocalDensity.current
+            CompositionLocalProvider(
+                LocalLayoutDirection provides direction,
+                LocalDensity provides Density(density.density, fontScale),
+            ) {
+                NetScanTheme {
+                    MapScanScreen(viewModel = viewModel, onClose = { closed = true }, handedness = handedness, cameraPreview = { Box(it.testTag("camera-preview")) })
+                }
             }
         }
         waitForText("Entrepôt Nord")
@@ -96,6 +121,7 @@ class MapScanScreenTest {
 
     @Test fun controlsFollowTheAgreedLayout() {
         showScreen()
+        assertHeaderPosition(closeOnLeft = false)
         val root = compose.onRoot().fetchSemanticsNode().boundsInWindow
         val close = compose.onNodeWithContentDescription(text(R.string.map_scan_close)).fetchSemanticsNode().boundsInWindow
         val title = compose.onNodeWithText("Entrepôt Nord").fetchSemanticsNode().boundsInWindow
@@ -131,6 +157,93 @@ class MapScanScreenTest {
 
         compose.onNodeWithText(text(R.string.close)).performClick()
         compose.onNodeWithText(text(R.string.net_scan_start)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.scan_history_open)).performClick()
+        compose.onNodeWithText(text(R.string.scan_history_title)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.scan_history_operator, "Simulation")).assertIsDisplayed()
+    }
+
+    @Test fun leftHandedButtonStaysOnPhysicalLeftInRtl() {
+        showScreen(handedness = Handedness.LEFT, direction = LayoutDirection.Rtl)
+        assertHeaderPosition(closeOnLeft = true)
+        val root = compose.onRoot().fetchSemanticsNode().boundsInWindow
+        val record = compose.onNodeWithContentDescription(text(R.string.record_start)).fetchSemanticsNode().boundsInWindow
+        assertTrue("Left-handed control is physically left", record.center.x < root.center.x)
+    }
+
+    @Test fun leftHandedButtonStaysOnPhysicalLeftInLtr() {
+        showScreen(handedness = Handedness.LEFT)
+        assertHeaderPosition(closeOnLeft = true)
+        val root = compose.onRoot().fetchSemanticsNode().boundsInWindow
+        val record = compose.onNodeWithContentDescription(text(R.string.record_start)).fetchSemanticsNode().boundsInWindow
+        assertTrue("Left-handed control is physically left", record.center.x < root.center.x)
+    }
+
+    @Test fun rightHandedButtonStaysOnPhysicalRightInRtl() {
+        showScreen(handedness = Handedness.RIGHT, direction = LayoutDirection.Rtl)
+        assertHeaderPosition(closeOnLeft = false)
+        val root = compose.onRoot().fetchSemanticsNode().boundsInWindow
+        val record = compose.onNodeWithContentDescription(text(R.string.record_start)).fetchSemanticsNode().boundsInWindow
+        assertTrue("Right-handed control is physically right", record.center.x > root.center.x)
+    }
+
+    private fun assertHeaderPosition(closeOnLeft: Boolean) {
+        val root = compose.onRoot().fetchSemanticsNode().boundsInWindow
+        val close = compose.onNodeWithContentDescription(text(R.string.map_scan_close))
+            .assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp).fetchSemanticsNode().boundsInWindow
+        val camera = compose.onNodeWithTag("camera-preview").fetchSemanticsNode().boundsInWindow
+        if (closeOnLeft) {
+            assertTrue("Close is on the physical left", close.center.x < root.center.x)
+            assertTrue("Camera is on the physical right", camera.center.x > root.center.x)
+        } else {
+            assertTrue("Close is on the physical right", close.center.x > root.center.x)
+            assertTrue("Camera is on the physical left", camera.center.x < root.center.x)
+        }
+    }
+
+    @Test fun historyShowsOnlyThisVisitsSavedScansNewestFirstWithDetails() = runBlocking {
+        RoomVisitRepository(db.visitDao()).createVisit("Autre", "", "")
+        val otherId = db.visitDao().observeAll().first().first { it.id != visitId }.id
+        val repository = RoomNetScanRepository(db.netScanDao())
+        fun scan(visit: Long, date: Long, operator: String) = NetScan(
+            visit, date, 20, NetScanMode.Timer(20), operator,
+            NetScanSummary(SignalLevel.MEDIUM, NetworkTechnology.LTE, -95.0, 6.0, 20, 20, 1234),
+        )
+        repository.save(scan(visitId, 1_000, "Ancien"))
+        repository.save(scan(visitId, 2_000, "Récent"))
+        repository.save(scan(otherId, 3_000, "Autre opérateur"))
+        val rows = repository.observeForVisit(visitId).first()
+        assertEquals(listOf("Récent", "Ancien"), rows.map { it.operatorName })
+        showScreen()
+        compose.onNodeWithText(text(R.string.scan_history_open)).performClick()
+        waitForText(text(R.string.scan_history_operator, "Récent"))
+        compose.onNodeWithText(text(R.string.scan_history_operator, "Autre opérateur")).assertDoesNotExist()
+        compose.onAllNodesWithText(text(R.string.details_show))[0].performClick()
+        compose.onNodeWithText(text(R.string.detail_rsrp)).performScrollTo().assertIsDisplayed()
+        Unit
+    }
+
+    @Test fun historyExplainsWhenNoMeasurementsHaveBeenSaved() {
+        showScreen()
+        compose.onNodeWithText(text(R.string.scan_history_open)).performClick()
+        waitForText(text(R.string.scan_history_empty))
+        compose.onNodeWithText(text(R.string.scan_history_empty)).assertIsDisplayed()
+    }
+
+    @Test fun historyRemainsAccessibleWithLargeTextAndRtl() {
+        runBlocking {
+            RoomNetScanRepository(db.netScanDao()).save(
+                NetScan(
+                    visitId, 1_000, 20, NetScanMode.Timer(20), "Orange",
+                    NetScanSummary(SignalLevel.MEDIUM, NetworkTechnology.LTE, -95.0, 6.0, 20, 20, 1234),
+                ),
+            )
+        }
+        showScreen(handedness = Handedness.LEFT, direction = LayoutDirection.Rtl, fontScale = 2f)
+        compose.onNodeWithText(text(R.string.scan_history_open))
+            .assertHeightIsAtLeast(48.dp).performClick()
+        waitForText(text(R.string.scan_history_operator, "Orange"))
+        compose.onNodeWithText(text(R.string.scan_history_operator, "Orange")).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.close)).assertIsDisplayed().performClick()
     }
 
     @Test fun cancellingANetScanKeepsNothing() {

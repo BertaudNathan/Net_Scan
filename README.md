@@ -4,10 +4,11 @@ Prototype Android de diagnostic réseau. La liste et le formulaire permettent de
 
 Toucher une visite ouvre son écran de scan :
 
-- en haut, un petit aperçu de la caméra arrière (aucune image n'est enregistrée), le nom du bâtiment et l'opérateur de la SIM données avec sa technologie (4G, 5G…) ;
+- en haut, un petit aperçu de la caméra arrière (aucune image n'est enregistrée), le nom du bâtiment, l'opérateur de la SIM données avec sa technologie (4G, 5G…) et le bouton de fermeture ;
 - au centre, l'emplacement de la future carte ARCore, encore un simple espace réservé ;
 - en bas, le bouton **Scan réseau** : il mesure le réseau mobile réel pendant un minuteur (20, 30 ou 60 s) ou en chrono libre (20 s minimum). Il affiche le niveau INEXISTANT, FAIBLE, MOYEN ou HAUT sur un filtre coloré, puis enregistre la médiane dans la visite. Les valeurs brutes (RSRP, SINR, bande, cellule) sont repliées dans « Détails techniques » ;
-- en bas à droite, le bouton d'enregistrement (rond rouge pour démarrer, carré noir pour arrêter). Il est indépendant des scans réseau. Tant qu'ARCore n'est pas intégré, il ne mémorise pas encore le parcours.
+- le bouton **Historique des mesures** permet de consulter les mesures enregistrées pour cette visite, de la plus récente à la plus ancienne, avec leur date, opérateur, durée, niveau et détails techniques ;
+- en bas, à droite par défaut, le bouton d'enregistrement (rond rouge pour démarrer, carré noir pour arrêter). Il est indépendant des scans réseau. Tant qu'ARCore n'est pas intégré, il ne mémorise pas encore le parcours.
 
 Les seuils suivent la synthèse du projet : RSRP > −80 dBm ou SINR > 13 dB pour HAUT, < −100 dBm ou < 0 dB pour FAIBLE, et le pire des deux indicateurs est retenu. « Pas de service » donne INEXISTANT.
 
@@ -23,4 +24,4 @@ Ouvrir le projet dans Android Studio avec le SDK Android configuré, puis lancer
 .\gradlew.bat :app:assembleDebug
 ```
 
-Le thème peut être réglé sur clair, sombre ou automatique selon le système dans les préférences ; ce choix est conservé localement. L'écran de scan reste en portrait sur téléphone. Les visites, les scans réseau et les préférences restent sur l'appareil, sans synchronisation ni sauvegarde applicative, et sont supprimés lors de la désinstallation ou de l'effacement des données. La base n'est pas chiffrée par l'application ; évitez d'y saisir des informations sensibles avant la mise en place des protections adaptées. Le mode gaucher reste à implémenter.
+Le thème peut être réglé sur clair, sombre ou automatique selon le système dans les préférences. La préférence gaucher/droitier place les boutons de fermeture et d'enregistrement à gauche ou à droite de l'écran et l'aperçu caméra du côté opposé ; les deux réglages sont conservés localement. L'écran de scan reste en portrait sur téléphone. Les visites, les scans réseau et les préférences restent sur l'appareil, sans synchronisation ni sauvegarde applicative, et sont supprimés lors de la désinstallation ou de l'effacement des données. La base n'est pas chiffrée par l'application ; évitez d'y saisir des informations sensibles avant la mise en place des protections adaptées.

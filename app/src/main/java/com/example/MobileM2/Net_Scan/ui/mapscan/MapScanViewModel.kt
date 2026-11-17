@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -41,6 +42,13 @@ sealed interface VisitState {
 sealed interface RecordingState {
     data object Idle : RecordingState
     data class Recording(val elapsedSeconds: Int) : RecordingState
+}
+
+sealed interface ScanHistoryState {
+    data object Loading : ScanHistoryState
+    data object Empty : ScanHistoryState
+    data object Error : ScanHistoryState
+    data class Success(val scans: List<NetScan>) : ScanHistoryState
 }
 
 enum class NetScanProblem {
@@ -81,6 +89,7 @@ class MapScanViewModel(
 ) : ViewModel() {
     private val logger = Logger.getLogger(MapScanViewModel::class.java.name)
     private val operatorRefresh = MutableStateFlow(0)
+    private val historyRefresh = MutableStateFlow(0)
     private val mutableMode = MutableStateFlow(NetScanMode.DEFAULT)
     private val mutableNetScan = MutableStateFlow<NetScanState>(NetScanState.Idle)
     private val mutableRecording = MutableStateFlow<RecordingState>(RecordingState.Idle)
@@ -93,6 +102,22 @@ class MapScanViewModel(
     val mode: StateFlow<NetScanMode> = mutableMode.asStateFlow()
     val netScan: StateFlow<NetScanState> = mutableNetScan.asStateFlow()
     val recording: StateFlow<RecordingState> = mutableRecording.asStateFlow()
+
+    val history: StateFlow<ScanHistoryState> = historyRefresh
+        .flatMapLatest {
+            netScanRepository.observeForVisit(visitId)
+                .map<List<NetScan>, ScanHistoryState> { scans ->
+                    if (scans.isEmpty()) ScanHistoryState.Empty else ScanHistoryState.Success(scans)
+                }
+                .onStart { emit(ScanHistoryState.Loading) }
+                .catch { error ->
+                    logger.log(Level.WARNING, "Unable to load scan history", error)
+                    emit(ScanHistoryState.Error)
+                }
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, ScanHistoryState.Loading)
+
+    fun retryHistory() { historyRefresh.value++ }
 
     val visit: StateFlow<VisitState> = visitRepository.observeVisit(visitId)
         .map<Visit?, VisitState> { if (it == null) VisitState.Missing else VisitState.Loaded(it) }

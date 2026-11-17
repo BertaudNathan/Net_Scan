@@ -58,6 +58,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
@@ -73,11 +74,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.MobileM2.Net_Scan.R
 import com.example.MobileM2.Net_Scan.domain.NetScanMode
 import com.example.MobileM2.Net_Scan.domain.NetScanSummary
+import com.example.MobileM2.Net_Scan.domain.Handedness
 import com.example.MobileM2.Net_Scan.domain.NetworkTechnology
 import com.example.MobileM2.Net_Scan.domain.OperatorStatus
 import com.example.MobileM2.Net_Scan.domain.SignalLevel
@@ -92,9 +95,6 @@ import com.example.MobileM2.Net_Scan.ui.theme.SignalColors
 import com.example.MobileM2.Net_Scan.ui.theme.TertiaryButton
 import java.util.Locale
 
-/** Côté du bouton d'enregistrement ; le réglage gaucher sera proposé plus tard. */
-enum class Handedness { Right, Left }
-
 private val SIGNAL_PERMISSIONS = arrayOf(
     Manifest.permission.ACCESS_FINE_LOCATION,
     Manifest.permission.ACCESS_COARSE_LOCATION,
@@ -105,7 +105,7 @@ private val SIGNAL_PERMISSIONS = arrayOf(
 fun MapScanScreen(
     viewModel: MapScanViewModel,
     onClose: () -> Unit,
-    handedness: Handedness = Handedness.Right,
+    handedness: Handedness = Handedness.RIGHT,
     cameraPreview: @Composable (Modifier) -> Unit = { CameraPreview(it) },
 ) {
     val visit by viewModel.visit.collectAsStateWithLifecycle()
@@ -113,7 +113,9 @@ fun MapScanScreen(
     val mode by viewModel.mode.collectAsStateWithLifecycle()
     val netScan by viewModel.netScan.collectAsStateWithLifecycle()
     val recording by viewModel.recording.collectAsStateWithLifecycle()
+    val history by viewModel.history.collectAsStateWithLifecycle()
     var showLeave by rememberSaveable { mutableStateOf(false) }
+    var showHistory by rememberSaveable { mutableStateOf(false) }
     val busy = recording is RecordingState.Recording || netScan is NetScanState.Running
     val context = LocalContext.current
 
@@ -146,6 +148,7 @@ fun MapScanScreen(
                 title = (visit as? VisitState.Loaded)?.visit?.building,
                 operator = operator,
                 isSimulated = viewModel.isSimulated,
+                handedness = handedness,
                 cameraPreview = cameraPreview,
                 onClose = requestClose,
             )
@@ -158,6 +161,7 @@ fun MapScanScreen(
                     netScan = netScan,
                     recording = recording,
                     handedness = handedness,
+                    onShowHistory = { showHistory = true },
                     actions = MapActions(
                         startNetScan = startNetScan,
                         selectMode = viewModel::selectMode,
@@ -171,6 +175,14 @@ fun MapScanScreen(
                 )
             }
         }
+    }
+
+    if (showHistory) {
+        ScanHistoryDialog(
+            state = history,
+            onDismiss = { showHistory = false },
+            onRetry = viewModel::retryHistory,
+        )
     }
 
     if (showLeave) {
@@ -206,10 +218,16 @@ private fun Header(
     title: String?,
     operator: OperatorStatus,
     isSimulated: Boolean,
+    handedness: Handedness,
     cameraPreview: @Composable (Modifier) -> Unit,
     onClose: () -> Unit,
 ) {
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+    val close: @Composable () -> Unit = {
+        IconButton(onClick = onClose, modifier = Modifier.size(Design.touchTarget)) {
+            Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.map_scan_close))
+        }
+    }
+    val preview: @Composable () -> Unit = {
         Box(
             modifier = Modifier.size(Design.previewWidth, Design.previewHeight)
                 .clip(Design.previewShape)
@@ -219,6 +237,10 @@ private fun Header(
         ) {
             cameraPreview(Modifier.fillMaxSize())
         }
+    }
+    val closeAtStart = handedness.atStart(LocalLayoutDirection.current)
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        if (closeAtStart) close() else preview()
         Column(
             modifier = Modifier.weight(1f)
                 .heightIn(min = Design.previewHeight)
@@ -244,9 +266,7 @@ private fun Header(
             )
             if (isSimulated) Badge(stringResource(R.string.simulated_data))
         }
-        IconButton(onClick = onClose, modifier = Modifier.size(Design.touchTarget)) {
-            Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.map_scan_close))
-        }
+        if (closeAtStart) preview() else close()
     }
 }
 
@@ -256,6 +276,7 @@ private fun MapArea(
     netScan: NetScanState,
     recording: RecordingState,
     handedness: Handedness,
+    onShowHistory: () -> Unit,
     actions: MapActions,
     modifier: Modifier = Modifier,
 ) {
@@ -277,10 +298,19 @@ private fun MapArea(
     ) {
         Box(Modifier.fillMaxSize().background(filter)) {
             Column(Modifier.fillMaxSize().padding(Design.spaceSmall)) {
-                Box(Modifier.fillMaxWidth().heightIn(min = Design.touchTarget)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().heightIn(min = Design.touchTarget),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
                     if (recording is RecordingState.Recording) {
-                        RecordingIndicator(recording.elapsedSeconds, Modifier.align(Alignment.CenterStart))
+                        RecordingIndicator(recording.elapsedSeconds, Modifier.weight(1f, fill = false))
                     }
+                    Spacer(Modifier.weight(1f))
+                    TertiaryButton(
+                        onClick = onShowHistory,
+                        enabled = recording !is RecordingState.Recording && netScan !is NetScanState.Running,
+                    ) { Text(stringResource(R.string.scan_history_open)) }
                 }
                 Box(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -321,12 +351,13 @@ private fun BottomControls(
     }
     // Un espace de la taille du bouton d'enregistrement garde le scan réseau centré sur la carte.
     val balance: @Composable () -> Unit = { Spacer(Modifier.width(Design.recordButtonSize)) }
+    val recordAtStart = handedness.atStart(LocalLayoutDirection.current)
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.spacedBy(Design.spaceSmall),
     ) {
-        if (handedness == Handedness.Left) record() else balance()
+        if (recordAtStart) record() else balance()
         Column(
             modifier = Modifier.weight(1f),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -341,9 +372,12 @@ private fun BottomControls(
                 }
             }
         }
-        if (handedness == Handedness.Left) balance() else record()
+        if (recordAtStart) balance() else record()
     }
 }
+
+private fun Handedness.atStart(direction: LayoutDirection): Boolean =
+    (this == Handedness.LEFT) == (direction == LayoutDirection.Ltr)
 
 @Composable
 private fun ModeSelector(mode: NetScanMode, onSelect: (NetScanMode) -> Unit) {
@@ -567,7 +601,7 @@ private fun LevelBadge(level: SignalLevel?) {
 
 /** Valeurs brutes pour le technicien, repliées par défaut. */
 @Composable
-private fun TechnicalDetails(summary: NetScanSummary?) {
+internal fun TechnicalDetails(summary: NetScanSummary?) {
     if (summary == null) return
     var expanded by rememberSaveable { mutableStateOf(false) }
     TertiaryButton(onClick = { expanded = !expanded }) {
@@ -727,7 +761,7 @@ private fun operatorLabel(status: OperatorStatus): String = when (status) {
 }
 
 @Composable
-private fun technologyLabel(technology: NetworkTechnology): String? = when (technology) {
+internal fun technologyLabel(technology: NetworkTechnology): String? = when (technology) {
     NetworkTechnology.GSM -> stringResource(R.string.technology_2g)
     NetworkTechnology.UMTS -> stringResource(R.string.technology_3g)
     NetworkTechnology.LTE -> stringResource(R.string.technology_4g)
@@ -736,7 +770,7 @@ private fun technologyLabel(technology: NetworkTechnology): String? = when (tech
 }
 
 @Composable
-private fun modeLabel(mode: NetScanMode): String = when (mode) {
+internal fun modeLabel(mode: NetScanMode): String = when (mode) {
     is NetScanMode.Timer -> stringResource(R.string.net_scan_mode_timer, mode.seconds)
     NetScanMode.Free -> stringResource(R.string.net_scan_mode_free)
 }

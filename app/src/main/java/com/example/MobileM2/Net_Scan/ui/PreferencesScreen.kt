@@ -36,6 +36,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import com.example.MobileM2.Net_Scan.R
+import com.example.MobileM2.Net_Scan.domain.Handedness
 import com.example.MobileM2.Net_Scan.domain.ThemeMode
 import com.example.MobileM2.Net_Scan.ui.theme.Design
 
@@ -43,9 +44,12 @@ import com.example.MobileM2.Net_Scan.ui.theme.Design
 fun PreferencesScreen(
     state: PreferencesState.Ready,
     onThemeSelected: (ThemeMode) -> Unit,
+    onHandednessSelected: (Handedness) -> Unit,
     onBack: () -> Unit,
 ) {
-    BackHandler(enabled = state.saving) {}
+    BackHandler {
+        if (!state.saving) onBack()
+    }
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         containerColor = MaterialTheme.colorScheme.background,
@@ -110,6 +114,42 @@ fun PreferencesScreen(
                             Text(text = stringResource(label), style = MaterialTheme.typography.bodyLarge)
                         }
                     }
+                    Column(verticalArrangement = Arrangement.spacedBy(Design.spaceSmall)) {
+                        Text(
+                            text = stringResource(R.string.handedness_title),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.semantics { heading() },
+                        )
+                        Text(
+                            text = stringResource(R.string.handedness_description),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                    Column(modifier = Modifier.selectableGroup()) {
+                        Handedness.entries.forEach { handedness ->
+                            val label = when (handedness) {
+                                Handedness.RIGHT -> R.string.handedness_right
+                                Handedness.LEFT -> R.string.handedness_left
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth().sizeIn(minHeight = Design.touchTarget)
+                                    .selectable(
+                                        selected = state.handedness == handedness,
+                                        enabled = !state.saving,
+                                        role = Role.RadioButton,
+                                        onClick = { onHandednessSelected(handedness) },
+                                    )
+                                    .padding(vertical = Design.spaceSmall),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(Design.spaceMedium),
+                            ) {
+                                RadioButton(selected = state.handedness == handedness, onClick = null, enabled = !state.saving)
+                                Text(text = stringResource(label), style = MaterialTheme.typography.bodyLarge)
+                            }
+                        }
+                    }
                 }
                 if (state.saving) {
                     Text(
@@ -119,7 +159,7 @@ fun PreferencesScreen(
                 }
                 if (state.saveError) {
                     Text(
-                        text = stringResource(R.string.theme_save_error),
+                        text = stringResource(R.string.preferences_save_error),
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
                     )

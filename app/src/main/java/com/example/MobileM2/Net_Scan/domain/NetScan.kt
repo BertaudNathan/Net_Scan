@@ -1,5 +1,7 @@
 package com.example.MobileM2.Net_Scan.domain
 
+import kotlinx.coroutines.flow.Flow
+
 /** Durée d'un scan réseau : minuteur imposé ou chrono libre arrêté par l'utilisateur. */
 sealed interface NetScanMode {
     data class Timer(val seconds: Int) : NetScanMode
@@ -32,9 +34,11 @@ data class NetScan(
     val mode: NetScanMode,
     val operatorName: String?,
     val summary: NetScanSummary,
+    val id: Long = 0,
 )
 
 interface NetScanRepository {
+    fun observeForVisit(visitId: Long): Flow<List<NetScan>>
     suspend fun save(scan: NetScan)
 }
 

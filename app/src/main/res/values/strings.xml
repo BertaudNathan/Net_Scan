@@ -40,7 +40,11 @@
     <string name="theme_dark">Sombre</string>
     <string name="theme_load_error">Impossible de charger les préférences.</string>
     <string name="loading_preferences">Chargement des préférences…</string>
-    <string name="theme_save_error">Impossible d’enregistrer le thème. Réessayez.</string>
+    <string name="preferences_save_error">Impossible d’enregistrer la préférence. Réessayez.</string>
+    <string name="handedness_title">Main utilisée</string>
+    <string name="handedness_description">Place les boutons de fermeture et d’enregistrement de la visite du côté de votre main.</string>
+    <string name="handedness_right">Droitier</string>
+    <string name="handedness_left">Gaucher</string>
 
     <string name="open_visit">Ouvrir la visite</string>
 
@@ -52,6 +56,14 @@
     <string name="close">Fermer</string>
     <string name="simulated_data">Données simulées</string>
     <string name="prototype_badge">Prototype</string>
+    <string name="scan_history_open">Historique des mesures</string>
+    <string name="scan_history_title">Mesures de la visite</string>
+    <string name="scan_history_loading">Chargement des mesures…</string>
+    <string name="scan_history_empty">Aucune mesure enregistrée pour cette visite.</string>
+    <string name="scan_history_error">Impossible de charger les mesures de cette visite.</string>
+    <string name="scan_history_date">Mesure du %1$s</string>
+    <string name="scan_history_operator">Opérateur : %1$s</string>
+    <string name="scan_history_mode">Mode : %1$s</string>
 
     <string name="operator_loading">Recherche de l’opérateur…</string>
     <string name="operator_unknown_name">Opérateur inconnu</string>

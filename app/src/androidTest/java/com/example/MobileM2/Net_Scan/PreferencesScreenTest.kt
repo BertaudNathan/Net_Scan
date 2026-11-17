@@ -18,6 +18,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -25,9 +26,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.example.MobileM2.Net_Scan.data.RoomThemeRepository
+import com.example.MobileM2.Net_Scan.data.RoomPreferencesRepository
 import com.example.MobileM2.Net_Scan.data.AppDatabase
 import com.example.MobileM2.Net_Scan.domain.ThemeMode
+import com.example.MobileM2.Net_Scan.domain.Handedness
 import com.example.MobileM2.Net_Scan.ui.PreferencesScreen
 import com.example.MobileM2.Net_Scan.ui.PreferencesState
 import com.example.MobileM2.Net_Scan.ui.PreferencesViewModel
@@ -68,7 +70,7 @@ class PreferencesScreenTest {
     private fun text(id: Int) = context.getString(id)
 
     @Test fun choicesUpdateThemeAndPersistWhenDatabaseReopens() {
-        val viewModel = PreferencesViewModel(RoomThemeRepository(db.preferencesDao()))
+        val viewModel = PreferencesViewModel(RoomPreferencesRepository(db.preferencesDao()))
         var currentPrimary = LightColors.primary
         compose.setContent {
             val density = LocalDensity.current
@@ -81,7 +83,12 @@ class PreferencesScreenTest {
                     val ready = state as PreferencesState.Ready
                     NetScanTheme(theme = ready.theme) {
                         currentPrimary = MaterialTheme.colorScheme.primary
-                        PreferencesScreen(state = ready, onThemeSelected = viewModel::setTheme, onBack = {})
+                        PreferencesScreen(
+                            state = ready,
+                            onThemeSelected = viewModel::setTheme,
+                            onHandednessSelected = viewModel::setHandedness,
+                            onBack = {},
+                        )
                     }
                 } else {
                     Text(text(R.string.loading_preferences))
@@ -105,9 +112,15 @@ class PreferencesScreenTest {
         compose.onNodeWithText(text(R.string.theme_system)).assertIsSelected()
         compose.onNodeWithText(text(R.string.theme_dark)).performClick()
         compose.waitUntil(10_000) { (viewModel.state.value as? PreferencesState.Ready)?.theme == ThemeMode.DARK }
+        compose.onNodeWithText(text(R.string.handedness_left))
+            .performScrollTo().assertIsDisplayed().assertHeightIsAtLeast(48.dp).assertWidthIsAtLeast(48.dp).performClick()
+        compose.waitUntil(10_000) { (viewModel.state.value as? PreferencesState.Ready)?.handedness == Handedness.LEFT }
+        compose.onNodeWithText(text(R.string.handedness_left)).assertIsSelected()
         db.close()
         db = openDatabase()
-        assertEquals(ThemeMode.DARK, runBlocking { RoomThemeRepository(db.preferencesDao()).observeTheme().first() })
+        val saved = runBlocking { RoomPreferencesRepository(db.preferencesDao()).observePreferences().first() }
+        assertEquals(ThemeMode.DARK, saved.theme)
+        assertEquals(Handedness.LEFT, saved.handedness)
     }
 
     @Test fun migrationPreservesVisitsAndDefaultsThemeToSystem() = runBlocking {
@@ -123,7 +136,21 @@ class PreferencesScreenTest {
         }
         db = openDatabase()
         assertEquals("Magasin", db.visitDao().observeAll().first().single().building)
-        assertEquals(ThemeMode.SYSTEM, RoomThemeRepository(db.preferencesDao()).observeTheme().first())
+        val preferences = RoomPreferencesRepository(db.preferencesDao()).observePreferences().first()
+        assertEquals(ThemeMode.SYSTEM, preferences.theme)
+        assertEquals(Handedness.RIGHT, preferences.handedness)
+    }
+
+    @Test fun handednessCanBeTheFirstPreferenceAndSurvivesThemeChangesAndReopening() = runBlocking {
+        val repo = RoomPreferencesRepository(db.preferencesDao())
+        repo.setHandedness(Handedness.LEFT)
+        assertEquals(ThemeMode.SYSTEM, repo.observePreferences().first().theme)
+        repo.setTheme(ThemeMode.DARK)
+        db.close()
+        db = openDatabase()
+        val saved = RoomPreferencesRepository(db.preferencesDao()).observePreferences().first()
+        assertEquals(Handedness.LEFT, saved.handedness)
+        assertEquals(ThemeMode.DARK, saved.theme)
     }
 
     @Test fun systemThemeRespondsToSystemChanges() {

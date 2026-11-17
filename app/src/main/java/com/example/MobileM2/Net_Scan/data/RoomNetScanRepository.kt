@@ -3,8 +3,36 @@ package com.example.MobileM2.Net_Scan.data
 import com.example.MobileM2.Net_Scan.domain.NetScan
 import com.example.MobileM2.Net_Scan.domain.NetScanMode
 import com.example.MobileM2.Net_Scan.domain.NetScanRepository
+import com.example.MobileM2.Net_Scan.domain.NetScanSummary
+import com.example.MobileM2.Net_Scan.domain.NetworkTechnology
+import com.example.MobileM2.Net_Scan.domain.SignalLevel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 class RoomNetScanRepository(private val dao: NetScanDao) : NetScanRepository {
+    override fun observeForVisit(visitId: Long): Flow<List<NetScan>> =
+        dao.observeForVisit(visitId).map { rows ->
+            rows.map { row ->
+                NetScan(
+                    visitId = row.visitId,
+                    startedAt = row.startedAt,
+                    durationSeconds = row.durationSeconds,
+                    mode = row.timerSeconds?.let { NetScanMode.Timer(it) } ?: NetScanMode.Free,
+                    operatorName = row.operatorName,
+                    id = row.id,
+                    summary = NetScanSummary(
+                        level = SignalLevel.valueOf(row.level),
+                        technology = NetworkTechnology.valueOf(row.technology),
+                        rsrpDbm = row.rsrpMedianDbm,
+                        sinrDb = row.sinrMedianDb,
+                        sampleCount = row.sampleCount,
+                        band = row.band,
+                        cellId = row.cellId,
+                    ),
+                )
+            }
+        }
+
     override suspend fun save(scan: NetScan) {
         dao.insert(
             NetScanEntity(

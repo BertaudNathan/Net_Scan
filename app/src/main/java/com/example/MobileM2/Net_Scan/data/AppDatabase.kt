@@ -3,6 +3,7 @@ package com.example.MobileM2.Net_Scan.data
 import android.content.Context
 import androidx.room.Dao
 import androidx.room.Database
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -12,6 +13,7 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.Transaction
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
@@ -79,7 +81,8 @@ interface NetScanDao {
 @Entity(tableName = "app_preferences")
 data class PreferencesEntity(
     @PrimaryKey val id: Int = 1,
-    val theme: String,
+    val theme: String = "SYSTEM",
+    @ColumnInfo(defaultValue = "RIGHT") val handedness: String = "RIGHT",
 )
 
 @Dao
@@ -87,18 +90,36 @@ interface PreferencesDao {
     @Query("SELECT * FROM app_preferences WHERE id = 1")
     fun observePreferences(): Flow<PreferencesEntity?>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun save(preferences: PreferencesEntity)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfMissing(preferences: PreferencesEntity)
+
+    @Query("UPDATE app_preferences SET theme = :theme WHERE id = 1")
+    suspend fun updateTheme(theme: String)
+
+    @Query("UPDATE app_preferences SET handedness = :handedness WHERE id = 1")
+    suspend fun updateHandedness(handedness: String)
+
+    @Transaction
+    suspend fun saveTheme(theme: String) {
+        insertIfMissing(PreferencesEntity())
+        updateTheme(theme)
+    }
+
+    @Transaction
+    suspend fun saveHandedness(handedness: String) {
+        insertIfMissing(PreferencesEntity())
+        updateHandedness(handedness)
+    }
 }
 
 /**
  * Version 1 : visites (table `scans`). Version 2 : deux branches ont chacune produit une version 2
  * différente (préférences d'un côté, visites renommées et scans réseau de l'autre). La version 3
- * réunit les deux ; sa migration accepte l'une ou l'autre des versions 2.
+ * réunit les deux ; la version 4 ajoute la préférence gaucher/droitier.
  */
 @Database(
     entities = [VisitEntity::class, NetScanEntity::class, PreferencesEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -122,7 +143,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `app_preferences` ADD COLUMN `handedness` TEXT NOT NULL DEFAULT 'RIGHT'")
+            }
+        }
+
+        val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 
         private const val CREATE_PREFERENCES =
             "CREATE TABLE IF NOT EXISTS `app_preferences` (`id` INTEGER NOT NULL, `theme` TEXT NOT NULL, PRIMARY KEY(`id`))"

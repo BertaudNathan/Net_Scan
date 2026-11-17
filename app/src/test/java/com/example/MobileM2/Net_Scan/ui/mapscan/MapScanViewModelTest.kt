@@ -66,6 +66,29 @@ class MapScanViewModelTest {
         assertEquals(VisitState.Missing, viewModel().visit.value)
     }
 
+    @Test fun historyObservesOnlyThisVisitAndUpdatesAfterSaving() = runTest(dispatcher) {
+        source.signal.value = lte(rsrp = -90)
+        val viewModel = viewModel()
+        assertEquals(ScanHistoryState.Empty, viewModel.history.value)
+        viewModel.selectMode(NetScanMode.Timer(20))
+        viewModel.startNetScan()
+        seconds(20)
+        val history = viewModel.history.value as ScanHistoryState.Success
+        assertEquals(1, history.scans.size)
+        assertEquals(VISIT_ID, history.scans.single().visitId)
+        assertEquals(SignalLevel.MEDIUM, history.scans.single().summary.level)
+    }
+
+    @Test fun historyFailureCanBeRetried() = runTest(dispatcher) {
+        netScans.failRead = true
+        val viewModel = viewModel()
+        assertEquals(ScanHistoryState.Error, viewModel.history.value)
+        netScans.failRead = false
+        viewModel.retryHistory()
+        runCurrent()
+        assertEquals(ScanHistoryState.Empty, viewModel.history.value)
+    }
+
     @Test fun timerCountsDownThenSavesTheMedian() = runTest(dispatcher) {
         source.signal.value = lte(rsrp = -90, sinr = 5)
         val viewModel = viewModel()
@@ -230,10 +253,17 @@ class MapScanViewModelTest {
 
     private class FakeNetScanRepository : NetScanRepository {
         val saved = mutableListOf<NetScan>()
+        val updates = MutableStateFlow<List<NetScan>>(emptyList())
         var failSave = false
+        var failRead = false
+        override fun observeForVisit(visitId: Long): Flow<List<NetScan>> = flow {
+            if (failRead) throw IllegalStateException("read failed")
+            emitAll(updates.map { scans -> scans.filter { it.visitId == visitId } })
+        }
         override suspend fun save(scan: NetScan) {
             if (failSave) throw IllegalStateException("disk full")
             saved += scan
+            updates.value = saved.toList()
         }
     }
 
