@@ -1,4 +1,4 @@
-package com.example.MobileM2.Net_Scan.ui
+package com.example.MobileM2.Net_Scan.ui.visits
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
@@ -64,7 +64,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.MobileM2.Net_Scan.R
-import com.example.MobileM2.Net_Scan.domain.Scan
+import com.example.MobileM2.Net_Scan.domain.Visit
 import com.example.MobileM2.Net_Scan.ui.theme.Design
 import com.example.MobileM2.Net_Scan.ui.theme.DestructiveButton
 import com.example.MobileM2.Net_Scan.ui.theme.PrimaryButton
@@ -73,7 +73,7 @@ import java.text.DateFormat
 import java.util.Date
 
 @Composable
-fun ScanScreen(onExit: () -> Unit, viewModel: ScanListViewModel) {
+fun VisitListScreen(onExit: () -> Unit, viewModel: VisitListViewModel) {
     var showCreation by rememberSaveable { mutableStateOf(false) }
     var showExit by rememberSaveable { mutableStateOf(false) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -108,7 +108,7 @@ fun ScanScreen(onExit: () -> Unit, viewModel: ScanListViewModel) {
             modifier = Modifier.fillMaxSize().padding(insets),
             contentAlignment = Alignment.TopCenter,
         ) {
-            ScanList(
+            VisitList(
                 state = state,
                 onRetry = viewModel::retry,
                 modifier = Modifier.widthIn(max = Design.contentWidth).fillMaxSize(),
@@ -117,9 +117,9 @@ fun ScanScreen(onExit: () -> Unit, viewModel: ScanListViewModel) {
     }
 
     if (showCreation) {
-        CreateScanDialog(
+        CreateVisitDialog(
             state = creationState,
-            onCreate = viewModel::createScan,
+            onCreate = viewModel::createVisit,
             onClose = {
                 showCreation = false
                 viewModel.resetCreation()
@@ -142,8 +142,8 @@ fun ScanScreen(onExit: () -> Unit, viewModel: ScanListViewModel) {
 }
 
 @Composable
-private fun ScanList(
-    state: ScanListState,
+private fun VisitList(
+    state: VisitListState,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -197,18 +197,18 @@ private fun ScanList(
                 modifier = Modifier.semantics { heading() },
             )
             when (state) {
-                ScanListState.Loading -> {
+                VisitListState.Loading -> {
                     CircularProgressIndicator(modifier = Modifier.clearAndSetSemantics {})
                     Text(
                         stringResource(R.string.loading_scans),
                         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                     )
                 }
-                ScanListState.Empty -> {
+                VisitListState.Empty -> {
                     Text(stringResource(R.string.empty_title), style = MaterialTheme.typography.titleMedium)
                     Text(stringResource(R.string.empty_description))
                 }
-                ScanListState.Error -> {
+                VisitListState.Error -> {
                     Text(
                         stringResource(R.string.error_scans),
                         color = MaterialTheme.colorScheme.error,
@@ -216,8 +216,8 @@ private fun ScanList(
                     )
                     TertiaryButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
                 }
-                is ScanListState.Success -> {
-                    state.scans.forEach { ScanCard(it) }
+                is VisitListState.Success -> {
+                    state.visits.forEach { VisitCard(it) }
                 }
             }
         }
@@ -226,7 +226,7 @@ private fun ScanList(
 }
 
 @Composable
-private fun ScanCard(scan: Scan) {
+private fun VisitCard(visit: Visit) {
     Surface(
         modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {},
         shape = Design.cardShape,
@@ -244,22 +244,22 @@ private fun ScanCard(scan: Scan) {
                 BuildingMark()
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = scan.building,
+                        text = visit.building,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                     )
-                    if (scan.client.isNotEmpty()) {
+                    if (visit.client.isNotEmpty()) {
                         Text(
-                            text = scan.client,
+                            text = visit.client,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
             }
-            if (scan.address.isNotEmpty()) {
+            if (visit.address.isNotEmpty()) {
                 Text(
-                    text = scan.address,
+                    text = visit.address,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -267,7 +267,7 @@ private fun ScanCard(scan: Scan) {
             Text(
                 text = stringResource(
                     R.string.created_date,
-                    DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(scan.createdAt)),
+                    DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(visit.createdAt)),
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -307,7 +307,7 @@ private fun BuildingMark() {
 }
 
 @Composable
-private fun CreateScanDialog(
+private fun CreateVisitDialog(
     state: CreationState,
     onCreate: (String, String, String) -> Unit,
     onClose: () -> Unit,

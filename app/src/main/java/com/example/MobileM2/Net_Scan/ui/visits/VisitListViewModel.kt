@@ -1,9 +1,9 @@
-package com.example.MobileM2.Net_Scan.ui
+package com.example.MobileM2.Net_Scan.ui.visits
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.MobileM2.Net_Scan.domain.Scan
-import com.example.MobileM2.Net_Scan.domain.ScanRepository
+import com.example.MobileM2.Net_Scan.domain.Visit
+import com.example.MobileM2.Net_Scan.domain.VisitRepository
 import java.util.logging.Level
 import java.util.logging.Logger
 import kotlinx.coroutines.CancellationException
@@ -20,11 +20,11 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-sealed interface ScanListState {
-    data object Loading : ScanListState
-    data object Empty : ScanListState
-    data object Error : ScanListState
-    data class Success(val scans: List<Scan>) : ScanListState
+sealed interface VisitListState {
+    data object Loading : VisitListState
+    data object Empty : VisitListState
+    data object Error : VisitListState
+    data class Success(val visits: List<Visit>) : VisitListState
 }
 
 sealed interface CreationState {
@@ -36,29 +36,29 @@ sealed interface CreationState {
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class ScanListViewModel(private val repository: ScanRepository) : ViewModel() {
-    private val logger = Logger.getLogger(ScanListViewModel::class.java.name)
+class VisitListViewModel(private val repository: VisitRepository) : ViewModel() {
+    private val logger = Logger.getLogger(VisitListViewModel::class.java.name)
     private val attempts = MutableStateFlow(0)
     private val mutableCreationState = MutableStateFlow<CreationState>(CreationState.Idle)
     val creationState = mutableCreationState.asStateFlow()
 
     val state = attempts.flatMapLatest {
-        flow { emitAll(repository.observeScans()) }
-            .map<List<Scan>, ScanListState> { scans ->
-                if (scans.isEmpty()) ScanListState.Empty else ScanListState.Success(scans)
+        flow { emitAll(repository.observeVisits()) }
+            .map<List<Visit>, VisitListState> { visits ->
+                if (visits.isEmpty()) VisitListState.Empty else VisitListState.Success(visits)
             }
-            .onStart { emit(ScanListState.Loading) }
+            .onStart { emit(VisitListState.Loading) }
             .catch { error ->
-                logger.log(Level.WARNING, "Unable to load scans", error)
-                emit(ScanListState.Error)
+                logger.log(Level.WARNING, "Unable to load visits", error)
+                emit(VisitListState.Error)
             }
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, ScanListState.Loading)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, VisitListState.Loading)
 
     fun retry() { attempts.value++ }
 
     fun resetCreation() { mutableCreationState.value = CreationState.Idle }
 
-    fun createScan(building: String, client: String, address: String) {
+    fun createVisit(building: String, client: String, address: String) {
         if (mutableCreationState.value == CreationState.Saving) return
         val name = building.trim()
         if (name.isEmpty()) {
@@ -68,12 +68,12 @@ class ScanListViewModel(private val repository: ScanRepository) : ViewModel() {
         mutableCreationState.value = CreationState.Saving
         viewModelScope.launch {
             try {
-                repository.createScan(name, client.trim(), address.trim())
+                repository.createVisit(name, client.trim(), address.trim())
                 mutableCreationState.value = CreationState.Saved
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                logger.log(Level.WARNING, "Unable to save scan", error)
+                logger.log(Level.WARNING, "Unable to save visit", error)
                 mutableCreationState.value = CreationState.Error
             }
         }

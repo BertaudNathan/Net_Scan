@@ -10,13 +10,13 @@ import androidx.navigation.compose.rememberNavController
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.example.MobileM2.Net_Scan.data.RoomScanRepository
-import com.example.MobileM2.Net_Scan.data.ScanDatabase
-import com.example.MobileM2.Net_Scan.ui.ScanListViewModel
-import com.example.MobileM2.Net_Scan.ui.ScanScreen
+import com.example.MobileM2.Net_Scan.data.RoomVisitRepository
+import com.example.MobileM2.Net_Scan.data.AppDatabase
+import com.example.MobileM2.Net_Scan.ui.visits.VisitListViewModel
+import com.example.MobileM2.Net_Scan.ui.visits.VisitListScreen
 import com.example.MobileM2.Net_Scan.ui.theme.NetScanTheme
 
-private const val SCANS_ROUTE = "scans"
+private const val VISITS_ROUTE = "visits"
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -27,19 +27,19 @@ class MainActivity : ComponentActivity() {
                 val navController = rememberNavController()
                 NavHost(
                     navController = navController,
-                    startDestination = SCANS_ROUTE
+                    startDestination = VISITS_ROUTE
                 ) {
-                    composable(SCANS_ROUTE) {
-                        val scanViewModel: ScanListViewModel = viewModel(
+                    composable(VISITS_ROUTE) {
+                        val visitListViewModel: VisitListViewModel = viewModel(
                             factory = viewModelFactory {
                                 initializer {
-                                    ScanListViewModel(
-                                        RoomScanRepository(ScanDatabase.getInstance(applicationContext).scanDao()),
+                                    VisitListViewModel(
+                                        RoomVisitRepository(AppDatabase.getInstance(applicationContext).visitDao()),
                                     )
                                 }
                             },
                         )
-                        ScanScreen(onExit = ::finish, viewModel = scanViewModel)
+                        VisitListScreen(onExit = ::finish, viewModel = visitListViewModel)
                     }
                 }
             }

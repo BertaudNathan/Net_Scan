@@ -1,7 +1,7 @@
-package com.example.MobileM2.Net_Scan.ui
+package com.example.MobileM2.Net_Scan.ui.visits
 
-import com.example.MobileM2.Net_Scan.domain.Scan
-import com.example.MobileM2.Net_Scan.domain.ScanRepository
+import com.example.MobileM2.Net_Scan.domain.Visit
+import com.example.MobileM2.Net_Scan.domain.VisitRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -19,7 +19,7 @@ import org.junit.Before
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class ScanListViewModelTest {
+class VisitListViewModelTest {
     private val dispatcher = StandardTestDispatcher()
 
     @Before fun setup() { Dispatchers.setMain(dispatcher) }
@@ -27,14 +27,14 @@ class ScanListViewModelTest {
 
     @Test fun startsEmptyAndDisplaysSavedValues() = runTest(dispatcher) {
         val repository = FakeRepository()
-        val viewModel = ScanListViewModel(repository)
+        val viewModel = VisitListViewModel(repository)
         advanceUntilIdle()
-        assertEquals(ScanListState.Empty, viewModel.state.value)
+        assertEquals(VisitListState.Empty, viewModel.state.value)
 
-        viewModel.createScan("  Boutique  ", " Client ", " Adresse ")
+        viewModel.createVisit("  Boutique  ", " Client ", " Adresse ")
         advanceUntilIdle()
 
-        val saved = (viewModel.state.value as ScanListState.Success).scans.single()
+        val saved = (viewModel.state.value as VisitListState.Success).visits.single()
         assertEquals("Boutique", saved.building)
         assertEquals("Client", saved.client)
         assertEquals("Adresse", saved.address)
@@ -43,44 +43,44 @@ class ScanListViewModelTest {
 
     @Test fun rejectsBlankBuildingWithoutSaving() = runTest(dispatcher) {
         val repository = FakeRepository()
-        val viewModel = ScanListViewModel(repository)
-        viewModel.createScan("   ", "", "")
+        val viewModel = VisitListViewModel(repository)
+        viewModel.createVisit("   ", "", "")
         advanceUntilIdle()
         assertEquals(CreationState.InvalidBuilding, viewModel.creationState.value)
-        assertTrue(repository.scans.value.isEmpty())
+        assertTrue(repository.visits.value.isEmpty())
     }
 
     @Test fun saveFailureIsVisibleAndDoesNotLoseInput() = runTest(dispatcher) {
         val repository = FakeRepository().apply { failSave = true }
-        val viewModel = ScanListViewModel(repository)
-        viewModel.createScan("Magasin", "", "")
+        val viewModel = VisitListViewModel(repository)
+        viewModel.createVisit("Magasin", "", "")
         advanceUntilIdle()
         assertEquals(CreationState.Error, viewModel.creationState.value)
-        assertTrue(repository.scans.value.isEmpty())
+        assertTrue(repository.visits.value.isEmpty())
     }
 
     @Test fun loadFailureCanBeRetried() = runTest(dispatcher) {
         val repository = FakeRepository().apply { failLoad = true }
-        val viewModel = ScanListViewModel(repository)
+        val viewModel = VisitListViewModel(repository)
         advanceUntilIdle()
-        assertEquals(ScanListState.Error, viewModel.state.value)
+        assertEquals(VisitListState.Error, viewModel.state.value)
         repository.failLoad = false
         viewModel.retry()
         advanceUntilIdle()
-        assertEquals(ScanListState.Empty, viewModel.state.value)
+        assertEquals(VisitListState.Empty, viewModel.state.value)
     }
 
-    private class FakeRepository : ScanRepository {
-        val scans = MutableStateFlow<List<Scan>>(emptyList())
+    private class FakeRepository : VisitRepository {
+        val visits = MutableStateFlow<List<Visit>>(emptyList())
         var failLoad = false
         var failSave = false
 
-        override fun observeScans(): Flow<List<Scan>> =
-            if (failLoad) flow { throw IllegalStateException("test") } else scans
+        override fun observeVisits(): Flow<List<Visit>> =
+            if (failLoad) flow { throw IllegalStateException("test") } else visits
 
-        override suspend fun createScan(building: String, client: String, address: String) {
+        override suspend fun createVisit(building: String, client: String, address: String) {
             if (failSave) throw IllegalStateException("test")
-            scans.value = listOf(Scan(1, building, client, address, 1))
+            visits.value = listOf(Visit(1, building, client, address, 1))
         }
     }
 }

@@ -12,7 +12,7 @@ import androidx.room.RoomDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "scans")
-data class ScanEntity(
+data class VisitEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val building: String,
     val client: String,
@@ -21,26 +21,26 @@ data class ScanEntity(
 )
 
 @Dao
-interface ScanDao {
+interface VisitDao {
     @Query("SELECT * FROM scans ORDER BY createdAt DESC, id DESC")
-    fun observeAll(): Flow<List<ScanEntity>>
+    fun observeAll(): Flow<List<VisitEntity>>
 
     @Insert
-    suspend fun insert(scan: ScanEntity)
+    suspend fun insert(visit: VisitEntity)
 }
 
-@Database(entities = [ScanEntity::class], version = 1, exportSchema = false)
-abstract class ScanDatabase : RoomDatabase() {
-    abstract fun scanDao(): ScanDao
+@Database(entities = [VisitEntity::class], version = 1, exportSchema = false)
+abstract class AppDatabase : RoomDatabase() {
+    abstract fun visitDao(): VisitDao
 
     companion object {
-        @Volatile private var instance: ScanDatabase? = null
+        @Volatile private var instance: AppDatabase? = null
 
-        fun getInstance(context: Context): ScanDatabase =
+        fun getInstance(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
-                    ScanDatabase::class.java,
+                    AppDatabase::class.java,
                     "net-scan.db",
                 ).build().also { instance = it }
             }
