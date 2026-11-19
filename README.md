@@ -37,3 +37,22 @@ Ouvrir le projet dans Android Studio avec le SDK Android configuré, puis lancer
 ```
 
 Le thème peut être réglé sur clair, sombre ou automatique selon le système dans les préférences. La préférence gaucher/droitier place les boutons de fermeture et d'enregistrement à gauche ou à droite de l'écran et l'aperçu caméra du côté opposé ; les deux réglages sont conservés localement. L'écran de scan reste en portrait sur téléphone. Les visites, les scans réseau et les préférences restent sur l'appareil, sans synchronisation ni sauvegarde applicative, et sont supprimés lors de la désinstallation ou de l'effacement des données. La base n'est pas chiffrée par l'application ; évitez d'y saisir des informations sensibles avant la mise en place des protections adaptées.
+
+## Tests et intégration continue
+
+En local :
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest
+.\gradlew.bat :app:connectedDebugAndroidTest
+```
+
+Les tests instrumentés demandent un appareil ou un émulateur API 36 connecté.
+
+Le workflow GitHub Actions [`.github/workflows/android.yml`](.github/workflows/android.yml) se lance à chaque push sur `main` et `feature/**`, à chaque pull request vers `main`, et à la main depuis l'onglet Actions :
+
+1. **Tests unitaires, lint et APK** : `testDebugUnitTest`, `lintDebug` (non bloquant pour l'instant, rapport publié) et `assembleDebug`. L'APK debug est téléchargeable dans les artefacts pendant 14 jours.
+2. **Tests instrumentés** : `connectedDebugAndroidTest` sur un émulateur API 36 sans caméra. Aucun test ne lit le vrai modem : les écrans utilisent la source simulée et le parcours complet écrit ses mesures directement en base.
+3. **Release** : un tag `v*` (par exemple `v0.2.0`) publie l'APK debug dans une pré-release GitHub, après la réussite des deux étapes précédentes.
+
+Les rapports de tests (HTML et XML) sont joints à chaque exécution, même en cas d'échec. Les tests ARCore, qui demandent un vrai téléphone et des déplacements, ne font pas partie de la CI.
