@@ -64,6 +64,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -100,6 +101,7 @@ import com.example.MobileM2.Net_Scan.domain.TrackingProblem
 import com.example.MobileM2.Net_Scan.ui.theme.Design
 import com.example.MobileM2.Net_Scan.ui.theme.DestructiveButton
 import com.example.MobileM2.Net_Scan.ui.theme.LevelColors
+import com.example.MobileM2.Net_Scan.ui.theme.PlanColors
 import com.example.MobileM2.Net_Scan.ui.theme.PrimaryButton
 import com.example.MobileM2.Net_Scan.ui.theme.RecordButton
 import com.example.MobileM2.Net_Scan.ui.theme.RecordColors
@@ -135,6 +137,7 @@ fun MapScanScreen(
     val plan by viewModel.plan.collectAsStateWithLifecycle()
     val planImport by viewModel.planImport.collectAsStateWithLifecycle()
     val manualPosition by viewModel.manualPosition.collectAsStateWithLifecycle()
+    val wallEditor by viewModel.wallEditor.collectAsStateWithLifecycle()
     val manual = (visit as? VisitState.Loaded)?.visit?.mode == MappingMode.MANUAL
     var showLeave by rememberSaveable { mutableStateOf(false) }
     var showHistory by rememberSaveable { mutableStateOf(false) }
@@ -191,6 +194,7 @@ fun MapScanScreen(
                         position = manualPosition,
                         mode = mode,
                         netScan = netScan,
+                        wallEditor = wallEditor,
                         actions = MapActions(
                             startNetScan = startNetScan,
                             selectMode = viewModel::selectMode,
@@ -204,6 +208,15 @@ fun MapScanScreen(
                             importPlan = { planPicker.launch(arrayOf("image/*", "application/pdf")) },
                             placeHere = viewModel::placeHere,
                             setScale = viewModel::setScale,
+                        ),
+                        wallActions = WallActions(
+                            edit = viewModel::editWalls,
+                            finish = viewModel::finishWalls,
+                            selectTool = viewModel::selectWallTool,
+                            tap = viewModel::tapWall,
+                            newWall = viewModel::newWall,
+                            undo = viewModel::undoWall,
+                            deleteSelected = viewModel::deleteSelectedWall,
                         ),
                         onShowHistory = { showHistory = true },
                         onOpenReport = onOpenReport,
@@ -874,6 +887,7 @@ internal fun MapLegend(modifier: Modifier = Modifier, forPlan: Boolean = false) 
             Box(Modifier.size(14.dp).background(SignalColors.medium.container, CircleShape).border(2.dp, colors.onSurface, CircleShape))
         }
         if (forPlan) {
+            LegendRow(stringResource(R.string.legend_plan_wall)) { WallSwatch() }
             LegendRow(stringResource(R.string.legend_plan_position)) {
                 Box(Modifier.size(16.dp).border(3.dp, colors.onSurface, CircleShape), contentAlignment = Alignment.Center) {
                     Box(Modifier.size(5.dp).background(colors.onSurface, CircleShape))
@@ -921,6 +935,18 @@ private fun HatchSwatch() {
                 }
             }
             .border(1.dp, colors.outline, Design.swatchShape),
+    )
+}
+
+/** Mur tracé, comme sur le plan : trait bleu nuit et liseré blanc. */
+@Composable
+private fun WallSwatch() {
+    Box(
+        Modifier.size(18.dp).drawBehind {
+            val y = size.height / 2
+            drawLine(PlanColors.casing, Offset(0f, y), Offset(size.width, y), 7.dp.toPx(), StrokeCap.Round)
+            drawLine(PlanColors.wall, Offset(0f, y), Offset(size.width, y), 4.dp.toPx(), StrokeCap.Round)
+        },
     )
 }
 

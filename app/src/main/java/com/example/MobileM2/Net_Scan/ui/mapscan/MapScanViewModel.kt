@@ -18,6 +18,8 @@ import com.example.MobileM2.Net_Scan.domain.OccupancyMap
 import com.example.MobileM2.Net_Scan.domain.OperatorStatus
 import com.example.MobileM2.Net_Scan.domain.PlanImporter
 import com.example.MobileM2.Net_Scan.domain.PlanPoint
+import com.example.MobileM2.Net_Scan.domain.PlanRules
+import com.example.MobileM2.Net_Scan.domain.PlanWall
 import com.example.MobileM2.Net_Scan.domain.PositionSource
 import com.example.MobileM2.Net_Scan.domain.PositionState
 import com.example.MobileM2.Net_Scan.domain.PositioningUnavailable
@@ -32,7 +34,10 @@ import com.example.MobileM2.Net_Scan.domain.VisitRepository
 import com.example.MobileM2.Net_Scan.domain.medianPoint
 import com.example.MobileM2.Net_Scan.domain.onPlan
 import com.example.MobileM2.Net_Scan.domain.scaleFrom
+import com.example.MobileM2.Net_Scan.domain.snapWallPoint
 import com.example.MobileM2.Net_Scan.domain.summarize
+import com.example.MobileM2.Net_Scan.domain.wallNear
+import com.example.MobileM2.Net_Scan.domain.wallPixels
 import java.util.logging.Level
 import java.util.logging.Logger
 import kotlinx.coroutines.CancellationException
@@ -108,10 +113,26 @@ sealed interface PlanState {
     /** Plan importé, échelle à régler avant de pouvoir mesurer. */
     data class NeedsScale(val plan: FloorPlan) : PlanState
 
-    data class Ready(val plan: FloorPlan, val map: FloorMap) : PlanState
+    /** [walls] : murs tracés, du plus ancien au plus récent ; la heatmap les contourne. */
+    data class Ready(val plan: FloorPlan, val map: FloorMap, val walls: List<PlanWall> = emptyList()) : PlanState
 
     data object Error : PlanState
 }
+
+/** Outil du tracé des murs : tracer des murs reliés, ou en choisir un pour l'effacer. */
+enum class WallTool { DRAW, ERASE }
+
+/**
+ * Tracé des murs sur le plan. [chainStart] : début du prochain mur, la fin du précédent quand on
+ * enchaîne. [selected] : mur choisi pour être effacé. [saveFailed] : le dernier changement n'a pas
+ * pu être enregistré. Chaque mur est enregistré dès qu'il est tracé : rien n'est perdu en quittant.
+ */
+data class WallEditor(
+    val tool: WallTool = WallTool.DRAW,
+    val chainStart: PlanPoint? = null,
+    val selected: Long? = null,
+    val saveFailed: Boolean = false,
+)
 
 enum class SaveState { SAVING, SAVED, FAILED }
 
@@ -182,6 +203,7 @@ class MapScanViewModel(
     private var scanJob: Job? = null
     private val mutableManualPosition = MutableStateFlow<PlanPoint?>(null)
     private val mutableImport = MutableStateFlow(ImportStatus.IDLE)
+    private val mutableWallEditor = MutableStateFlow<WallEditor?>(null)
     /** Position sur le plan retenue au lancement du scan réseau en cours (mode manuel). */
     private var scanPlanPosition: PlanPoint? = null
     private var active: ActiveRecording? = null
@@ -233,14 +255,19 @@ class MapScanViewModel(
     val manualPosition: StateFlow<PlanPoint?> = mutableManualPosition.asStateFlow()
     val planImport: StateFlow<ImportStatus> = mutableImport.asStateFlow()
 
+    /** Mode manuel : tracé des murs en cours, null sinon. */
+    val wallEditor: StateFlow<WallEditor?> = mutableWallEditor.asStateFlow()
+
     val plan: StateFlow<PlanState> = combine(
         planRepository.observePlan(visitId),
         planRepository.observePlanMeasurements(visitId),
-    ) { plan, measurements ->
+        planRepository.observeWalls(visitId),
+    ) { plan, measurements, walls ->
         when {
             plan == null -> PlanState.Missing
             plan.metersPerPixel == null -> PlanState.NeedsScale(plan)
-            else -> FloorMap.onPlan(plan, measurements)?.let { PlanState.Ready(plan, it) } ?: PlanState.NeedsScale(plan)
+            else -> FloorMap.onPlan(plan, measurements, walls = walls)?.let { PlanState.Ready(plan, it, walls) }
+                ?: PlanState.NeedsScale(plan)
         }
     }
         .flowOn(mapDispatcher)
@@ -371,8 +398,100 @@ class MapScanViewModel(
     /** Mode manuel : la personne indique où elle se trouve sur le plan. */
     fun placeHere(point: PlanPoint) {
         val ready = plan.value as? PlanState.Ready ?: return
-        if (mutableNetScan.value is NetScanState.Running || !ready.plan.contains(point)) return
+        if (mutableNetScan.value is NetScanState.Running || mutableWallEditor.value != null || !ready.plan.contains(point)) return
         mutableManualPosition.value = point
+    }
+
+    /** Mode manuel : commence le tracé des murs, une fois l'échelle réglée et hors scan réseau. */
+    fun editWalls() {
+        if (plan.value !is PlanState.Ready || mutableNetScan.value is NetScanState.Running) return
+        if (mutableWallEditor.value == null) mutableWallEditor.value = WallEditor()
+    }
+
+    fun finishWalls() {
+        mutableWallEditor.value = null
+    }
+
+    fun selectWallTool(tool: WallTool) {
+        mutableWallEditor.update { it?.copy(tool = tool, chainStart = null, selected = null) }
+    }
+
+    /**
+     * Toucher du plan pendant le tracé, à [tolerancePixels] près (la taille d'un doigt, en pixels du
+     * plan au zoom actuel). Pour tracer : le premier toucher place le début du mur, chaque toucher
+     * suivant le termine et commence le suivant. Pour effacer : choisit le mur touché.
+     */
+    fun tapWall(point: PlanPoint, tolerancePixels: Float) {
+        val editor = mutableWallEditor.value ?: return
+        val ready = plan.value as? PlanState.Ready ?: return
+        if (editor.tool == WallTool.ERASE) {
+            mutableWallEditor.value = editor.copy(selected = wallNear(ready.plan, point, ready.walls, tolerancePixels)?.id)
+            return
+        }
+        // Un toucher juste au bord du plan s'y arrête ; plus loin, il ne trace rien.
+        val inside = PlanPoint(point.u.coerceIn(0f, 1f), point.v.coerceIn(0f, 1f))
+        if (wallPixels(ready.plan, point, inside) > tolerancePixels) return
+        val start = editor.chainStart
+        val end = snapWallPoint(ready.plan, inside, start, ready.walls, tolerancePixels)
+        if (start == null) {
+            mutableWallEditor.value = editor.copy(chainStart = end)
+            return
+        }
+        if (wallPixels(ready.plan, start, end) < PlanRules.MIN_WALL_PIXELS) return
+        mutableWallEditor.value = editor.copy(chainStart = end, saveFailed = false)
+        viewModelScope.launch {
+            try {
+                planRepository.addWall(visitId, start, end)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                logger.log(Level.WARNING, "Unable to save a wall", error)
+                // On repart du début du mur perdu, si la personne n'a pas continué entre-temps.
+                mutableWallEditor.update { it?.copy(saveFailed = true, chainStart = if (it.chainStart == end) start else it.chainStart) }
+            }
+        }
+    }
+
+    /** Lève le crayon : le prochain toucher commence un mur séparé. */
+    fun newWall() {
+        mutableWallEditor.update { it?.copy(chainStart = null) }
+    }
+
+    /**
+     * Annule la dernière action du tracé : le début d'un mur à peine placé, sinon le dernier mur
+     * tracé. En plein enchaînement, on repart du début de ce mur.
+     */
+    fun undoWall() {
+        val editor = mutableWallEditor.value ?: return
+        val ready = plan.value as? PlanState.Ready ?: return
+        val last = ready.walls.lastOrNull()
+        if (editor.chainStart != null && editor.chainStart != last?.end) {
+            mutableWallEditor.value = editor.copy(chainStart = null)
+            return
+        }
+        if (last == null) return
+        mutableWallEditor.value = editor.copy(chainStart = editor.chainStart?.let { last.start }, selected = null, saveFailed = false)
+        deleteWall(last.id)
+    }
+
+    fun deleteSelectedWall() {
+        val editor = mutableWallEditor.value ?: return
+        val id = editor.selected ?: return
+        mutableWallEditor.value = editor.copy(selected = null, saveFailed = false)
+        deleteWall(id)
+    }
+
+    private fun deleteWall(id: Long) {
+        viewModelScope.launch {
+            try {
+                planRepository.deleteWall(id)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                logger.log(Level.WARNING, "Unable to delete a wall", error)
+                mutableWallEditor.update { it?.copy(saveFailed = true) }
+            }
+        }
     }
 
     /** Mode manuel : copie le plan choisi (image ou PDF) ; son échelle sera à régler. */

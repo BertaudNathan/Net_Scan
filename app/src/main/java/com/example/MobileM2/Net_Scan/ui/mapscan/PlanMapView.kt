@@ -24,6 +24,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
@@ -46,6 +47,8 @@ import com.example.MobileM2.Net_Scan.domain.FloorMap
 import com.example.MobileM2.Net_Scan.domain.FloorPlan
 import com.example.MobileM2.Net_Scan.domain.FloorPoint
 import com.example.MobileM2.Net_Scan.domain.PlanPoint
+import com.example.MobileM2.Net_Scan.domain.PlanWall
+import com.example.MobileM2.Net_Scan.ui.theme.PlanColors
 import kotlin.math.ceil
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -53,9 +56,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Plan importé avec la heatmap par-dessus, les scans placés, la position choisie (cible) et, pendant
- * le réglage de l'échelle, les points d'étalonnage. Toucher indique un point du plan ; pincer zoome,
- * glisser déplace, toucher deux fois revient à la vue d'ensemble.
+ * Plan importé avec la heatmap par-dessus, les murs tracés, les scans placés, la position choisie
+ * (cible) et, pendant le réglage de l'échelle, les points d'étalonnage. Pendant le tracé des murs,
+ * [wallChain] marque le début du prochain mur et [selectedWall] le mur choisi pour être effacé.
+ * Toucher indique un point du plan, avec la tolérance d'un doigt en pixels du plan au zoom actuel ;
+ * pincer zoome, glisser déplace, toucher deux fois revient à la vue d'ensemble.
  */
 @Composable
 internal fun PlanMapView(
@@ -64,8 +69,11 @@ internal fun PlanMapView(
     position: PlanPoint?,
     calibration: List<PlanPoint>,
     contentPadding: PaddingValues,
-    onTap: (PlanPoint) -> Unit,
+    onTap: (point: PlanPoint, tolerancePixels: Float) -> Unit,
     modifier: Modifier = Modifier,
+    walls: List<PlanWall> = emptyList(),
+    wallChain: PlanPoint? = null,
+    selectedWall: Long? = null,
 ) {
     val image by produceState<ImageBitmap?>(null, plan.imagePath) {
         value = withContext(Dispatchers.IO) { loadPlanImage(plan.imagePath) }
@@ -75,7 +83,7 @@ internal fun PlanMapView(
     val currentOnTap by rememberUpdatedState(onTap)
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
-    val description = planDescription(map, position != null)
+    val description = planDescription(map, walls.size, position != null)
     val colors = MaterialTheme.colorScheme
     val surface = colors.surface
     val ink = colors.onSurface
@@ -119,7 +127,7 @@ internal fun PlanMapView(
                             zoom = 1f
                             pan = Offset.Zero
                         },
-                        onTap = { currentOnTap(toPlan(it)) },
+                        onTap = { currentOnTap(toPlan(it), TOUCH_TOLERANCE.toPx() / (fit * zoom)) },
                     )
                 },
         ) {
@@ -150,7 +158,27 @@ internal fun PlanMapView(
                     }
                 }
 
-                // Repères à taille constante, quel que soit le zoom.
+                // Murs et repères à taille constante, quel que soit le zoom. Les liserés d'abord : un
+                // mur ne recouvre pas celui qu'il rejoint.
+                val wallWidth = 4.dp.toPx()
+                for (wall in walls) {
+                    val width = if (wall.id == selectedWall) wallWidth * 2 else wallWidth
+                    drawLine(PlanColors.casing, toScreen(wall.start), toScreen(wall.end), width + 3.dp.toPx(), StrokeCap.Round)
+                }
+                for (wall in walls) {
+                    val selected = wall.id == selectedWall
+                    drawLine(
+                        if (selected) PlanColors.selected else PlanColors.wall,
+                        toScreen(wall.start),
+                        toScreen(wall.end),
+                        if (selected) wallWidth * 2 else wallWidth,
+                        StrokeCap.Round,
+                    )
+                }
+                wallChain?.let(::toScreen)?.let { center ->
+                    drawCircle(PlanColors.casing, 9.dp.toPx(), center)
+                    drawCircle(PlanColors.wall, 6.dp.toPx(), center)
+                }
                 val radius = 7.dp.toPx()
                 val ring = Stroke(width = 2.dp.toPx())
                 val scale = plan.metersPerPixel
@@ -213,12 +241,16 @@ private fun loadPlanImage(path: String): ImageBitmap? =
     BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.RGB_565 })?.asImageBitmap()
 
 @Composable
-private fun planDescription(map: FloorMap?, positioned: Boolean): String {
+private fun planDescription(map: FloorMap?, wallCount: Int, positioned: Boolean): String {
     val count = map?.measurements?.size ?: 0
     val measurements = pluralStringResource(R.plurals.map_measurements, count, count)
+    val walls = pluralStringResource(R.plurals.plan_walls, wallCount, wallCount)
     val position = stringResource(if (positioned) R.string.plan_position_marked else R.string.plan_position_missing)
-    return stringResource(R.string.plan_description, measurements, position)
+    return stringResource(R.string.plan_description, stringResource(R.string.plan_contents, measurements, walls), position)
 }
 
 private const val MAX_ZOOM = 8f
+
+/** La moitié d'une cible tactile : un doigt couvre au moins cela autour du point touché. */
+private val TOUCH_TOLERANCE = 24.dp
 private const val MEASURED_ALPHA = 0.6f

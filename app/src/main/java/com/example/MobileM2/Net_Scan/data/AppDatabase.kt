@@ -50,6 +50,28 @@ data class FloorPlanEntity(
     val metersPerPixel: Float?,
 )
 
+/** Mur tracé à la main sur le plan ; ses extrémités sont en fraction de la largeur et de la hauteur. */
+@Entity(
+    tableName = "plan_walls",
+    foreignKeys = [
+        ForeignKey(
+            entity = VisitEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["visitId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("visitId")],
+)
+data class PlanWallEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val visitId: Long,
+    val startU: Float,
+    val startV: Float,
+    val endU: Float,
+    val endV: Float,
+)
+
 @Dao
 interface FloorPlanDao {
     @Query("SELECT * FROM floor_plans WHERE visitId = :visitId")
@@ -60,6 +82,15 @@ interface FloorPlanDao {
 
     @Query("UPDATE floor_plans SET metersPerPixel = :metersPerPixel WHERE visitId = :visitId")
     suspend fun setScale(visitId: Long, metersPerPixel: Float)
+
+    @Query("SELECT * FROM plan_walls WHERE visitId = :visitId ORDER BY id")
+    fun observeWalls(visitId: Long): Flow<List<PlanWallEntity>>
+
+    @Insert
+    suspend fun insertWall(wall: PlanWallEntity): Long
+
+    @Query("DELETE FROM plan_walls WHERE id = :id")
+    suspend fun deleteWall(id: Long)
 }
 
 @Dao
@@ -271,8 +302,9 @@ interface PreferencesDao {
  * (version 4 de main) ; les parcours ARCore et la position des scans sur leur carte (version 4 de la
  * branche ARCore), puis la carte d'occupation (version 5) ; le mode de la visite, le plan importé et
  * la position des scans sur ce plan (version 6 du mode manuel). La version 7 réunissait main et
- * ARCore ; la version 8 réunit tout. Chaque migration à partir de la version 3 vérifie ce qui existe
- * déjà et ajoute seulement ce qui manque, quelle que soit la branche d'origine.
+ * ARCore ; la version 8 réunit tout ; la version 9 ajoute les murs tracés sur le plan. Chaque
+ * migration à partir de la version 3 vérifie ce qui existe déjà et ajoute seulement ce qui manque,
+ * quelle que soit la branche d'origine.
  */
 @Database(
     entities = [
@@ -283,8 +315,9 @@ interface PreferencesDao {
         RecordingPointEntity::class,
         RecordingCellEntity::class,
         FloorPlanEntity::class,
+        PlanWallEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -315,6 +348,7 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_5_6 = completeSchema(5, 6)
         val MIGRATION_6_7 = completeSchema(6, 7)
         val MIGRATION_7_8 = completeSchema(7, 8)
+        val MIGRATION_8_9 = completeSchema(8, 9)
 
         val MIGRATIONS = arrayOf(
             MIGRATION_1_2,
@@ -324,11 +358,12 @@ abstract class AppDatabase : RoomDatabase() {
             MIGRATION_5_6,
             MIGRATION_6_7,
             MIGRATION_7_8,
+            MIGRATION_8_9,
         )
 
         /**
-         * Une version 4, 5, 6 ou 7 peut venir de branches différentes : on ajoute ce qui manque, sans
-         * jamais rien recréer ni effacer.
+         * Une version 4 à 8 peut venir de branches différentes : on ajoute ce qui manque, sans jamais
+         * rien recréer ni effacer.
          */
         private fun completeSchema(from: Int, to: Int) = object : Migration(from, to) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -377,6 +412,13 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 if (!db.hasColumn("net_scans", "planX")) db.execSQL("ALTER TABLE `net_scans` ADD COLUMN `planX` REAL")
                 if (!db.hasColumn("net_scans", "planY")) db.execSQL("ALTER TABLE `net_scans` ADD COLUMN `planY` REAL")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `plan_walls` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`visitId` INTEGER NOT NULL, `startU` REAL NOT NULL, `startV` REAL NOT NULL, " +
+                        "`endU` REAL NOT NULL, `endV` REAL NOT NULL, FOREIGN KEY(`visitId`) REFERENCES `visits`(`id`) " +
+                        "ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_plan_walls_visitId` ON `plan_walls` (`visitId`)")
             }
         }
 

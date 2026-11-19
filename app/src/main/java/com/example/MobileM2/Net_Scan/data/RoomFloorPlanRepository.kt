@@ -4,6 +4,7 @@ import com.example.MobileM2.Net_Scan.domain.FloorPlan
 import com.example.MobileM2.Net_Scan.domain.FloorPlanRepository
 import com.example.MobileM2.Net_Scan.domain.PlanMeasurement
 import com.example.MobileM2.Net_Scan.domain.PlanPoint
+import com.example.MobileM2.Net_Scan.domain.PlanWall
 import com.example.MobileM2.Net_Scan.domain.SignalLevel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -30,4 +31,13 @@ class RoomFloorPlanRepository(
                 PlanMeasurement(PlanPoint(x, y), level)
             }
         }
+
+    override fun observeWalls(visitId: Long): Flow<List<PlanWall>> = plans.observeWalls(visitId).map { walls ->
+        walls.map { PlanWall(it.id, PlanPoint(it.startU, it.startV), PlanPoint(it.endU, it.endV)) }
+    }
+
+    override suspend fun addWall(visitId: Long, start: PlanPoint, end: PlanPoint): Long =
+        plans.insertWall(PlanWallEntity(visitId = visitId, startU = start.u, startV = start.v, endU = end.u, endV = end.v))
+
+    override suspend fun deleteWall(id: Long) = plans.deleteWall(id)
 }

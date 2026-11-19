@@ -125,7 +125,8 @@
     <string name="legend_obstacle">Plein foncé : mur ou obstacle vu par la caméra</string>
     <string name="legend_measurement">Rond cerclé : scan réseau</string>
     <string name="legend_position">Point et flèche : votre position</string>
-    <string name="legend_plan_estimated">Couleur atténuée : estimé d’après les scans voisins, à vol d’oiseau</string>
+    <string name="legend_plan_estimated">Couleur atténuée : estimé d’après les scans voisins, sans traverser les murs tracés</string>
+    <string name="legend_plan_wall">Trait bleu nuit : mur tracé à la main</string>
     <string name="legend_plan_position">Cible : votre position pour le prochain scan</string>
 
     <!-- Mode manuel : plan importé -->
@@ -149,6 +150,24 @@
     <string name="plan_position_marked">Votre position est marquée par une cible.</string>
     <string name="plan_position_missing">Touchez le plan pour indiquer votre position.</string>
     <string name="plan_description">Plan de la visite, %1$s. %2$s Pincez pour zoomer, touchez deux fois pour revenir à la vue d’ensemble.</string>
+    <string name="plan_contents">%1$s, %2$s</string>
+    <plurals name="plan_walls">
+        <item quantity="one">%1$d mur tracé</item>
+        <item quantity="many">%1$d de murs tracés</item>
+        <item quantity="other">%1$d murs tracés</item>
+    </plurals>
+    <string name="plan_walls_edit">Murs</string>
+    <string name="plan_walls_draw">Tracer</string>
+    <string name="plan_walls_erase">Effacer</string>
+    <string name="plan_walls_first">Murs : touchez le début d’un mur</string>
+    <string name="plan_walls_next">Touchez la fin du mur : le suivant part de là</string>
+    <string name="plan_walls_pick">Touchez le mur à effacer</string>
+    <string name="plan_walls_picked">Mur choisi, en rouge</string>
+    <string name="plan_walls_undo">Annuler le point</string>
+    <string name="plan_walls_new">Nouveau mur</string>
+    <string name="plan_walls_delete">Effacer ce mur</string>
+    <string name="plan_walls_done">Terminer</string>
+    <string name="plan_walls_save_failed">Ce changement n’a pas été enregistré. Réessayez.</string>
 
     <string name="record_start">Démarrer l’enregistrement</string>
     <string name="record_stop">Arrêter l’enregistrement</string>

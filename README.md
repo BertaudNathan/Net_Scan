@@ -31,9 +31,10 @@ ARCore est facultatif : sur un téléphone non compatible, ou sans les Services 
 
 1. importer le plan du bâtiment, image ou PDF (première page), par exemple une photo du plan d'évacuation. Il est copié dans le stockage privé de l'application, réduit à 2560 pixels de côté, et ne quitte pas l'appareil ;
 2. régler l'échelle : toucher les deux extrémités d'une longueur connue (mur, porte), puis saisir cette longueur en mètres. Le bouton « Échelle » permet de la régler à nouveau ;
-3. avant chaque scan réseau, toucher sa position sur le plan (cible). Le bouton « Scan réseau » reste inactif tant qu'aucune position n'est choisie, et la position est effacée après chaque mesure, puisqu'on se déplace ensuite.
+3. si on le souhaite, tracer les murs (bouton « Murs ») : toucher le début d'un mur puis sa fin ; le toucher suivant termine le mur suivant, qui part de là, et « Nouveau mur » lève le crayon. Une extrémité touchée près d'un mur existant s'y accroche (à son extrémité ou le long de lui), et un mur presque horizontal ou vertical est redressé : les murs se rejoignent sans laisser de passage. « Annuler le point » retire le dernier point touché ; l'outil « Effacer » supprime le mur touché, après confirmation. Chaque mur est enregistré dès qu'il est tracé ;
+4. avant chaque scan réseau, toucher sa position sur le plan (cible). Le bouton « Scan réseau » reste inactif tant qu'aucune position n'est choisie, et la position est effacée après chaque mesure, puisqu'on se déplace ensuite.
 
-Les scans sont enregistrés à leur place sur le plan, en fraction de sa largeur et de sa hauteur : régler l'échelle à nouveau ne les déplace pas. La heatmap est la même qu'en mode ARCore (cases de 50 cm, estimation IDW), mais à vol d'oiseau puisque les murs du plan ne sont pas connus : une estimation peut traverser un mur. Seules les cases à moins de 6 m d'un scan sont colorées, le reste du plan reste visible tel quel. On zoome en pinçant et on revient à la vue d'ensemble en touchant deux fois.
+Les scans et les murs sont enregistrés à leur place sur le plan, en fraction de sa largeur et de sa hauteur : régler l'échelle à nouveau ne les déplace pas. La heatmap est la même qu'en mode ARCore (cases de 50 cm, estimation IDW) : les cases traversées par un mur tracé sont des obstacles, et les estimations les contournent par les passages laissés libres (portes) au lieu de les traverser. Sans mur tracé, elles vont à vol d'oiseau. Seules les cases à moins de 6 m d'un scan sont colorées, le reste du plan reste visible tel quel. On zoome en pinçant (le zoom aide à tracer précisément) et on revient à la vue d'ensemble en touchant deux fois.
 
 Les seuils suivent la synthèse du projet : RSRP > −80 dBm ou SINR > 13 dB pour HAUT, < −100 dBm ou < 0 dB pour FAIBLE, et le pire des deux indicateurs est retenu. « Pas de service » donne INEXISTANT.
 
@@ -50,7 +51,7 @@ L'écran **Rapport** génère un PDF A4 à partir des mesures enregistrées, san
 
 Les points sont numérotés dans l'ordre chronologique. La carte ARCore et la heatmap ne sont pas encore reprises dans le PDF : le cadre du plan est à compléter à la main. Seul le dernier PDF généré est conservé dans le cache de l'application ; il n'est envoyé nulle part sans action de l'utilisateur.
 
-Les annotations d'obstacles et le positionnement manuel sur un plan ne sont pas encore disponibles.
+La nature des obstacles (béton, rayonnage, chambre froide) n'est pas encore annotée : un mur tracé ou vu par la caméra arrête les estimations, quelle que soit son épaisseur.
 
 ## Lancer le projet
 

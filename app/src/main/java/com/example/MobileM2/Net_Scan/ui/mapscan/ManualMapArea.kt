@@ -23,10 +23,14 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,6 +39,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -50,7 +56,9 @@ import com.example.MobileM2.Net_Scan.R
 import com.example.MobileM2.Net_Scan.domain.NetScanMode
 import com.example.MobileM2.Net_Scan.domain.PlanPoint
 import com.example.MobileM2.Net_Scan.ui.theme.Design
+import com.example.MobileM2.Net_Scan.ui.theme.DestructiveButton
 import com.example.MobileM2.Net_Scan.ui.theme.PrimaryButton
+import com.example.MobileM2.Net_Scan.ui.theme.SecondaryButton
 import com.example.MobileM2.Net_Scan.ui.theme.SignalColors
 import com.example.MobileM2.Net_Scan.ui.theme.TertiaryButton
 
@@ -61,9 +69,21 @@ internal class PlanActions(
     val setScale: (PlanPoint, PlanPoint, Float) -> Boolean,
 )
 
+/** Tracé des murs sur le plan. */
+internal class WallActions(
+    val edit: () -> Unit,
+    val finish: () -> Unit,
+    val selectTool: (WallTool) -> Unit,
+    val tap: (PlanPoint, Float) -> Unit,
+    val newWall: () -> Unit,
+    val undo: () -> Unit,
+    val deleteSelected: () -> Unit,
+)
+
 /**
- * Carte du mode manuel : importer un plan, en régler l'échelle, puis toucher sa position avant
- * chaque scan réseau. La heatmap (cases, distances) est la même qu'en mode ARCore.
+ * Carte du mode manuel : importer un plan, en régler l'échelle, y tracer les murs si on le souhaite,
+ * puis toucher sa position avant chaque scan réseau. La heatmap (cases, distances) est la même qu'en
+ * mode ARCore ; elle contourne les murs tracés.
  */
 @Composable
 internal fun ManualMapArea(
@@ -72,8 +92,10 @@ internal fun ManualMapArea(
     position: PlanPoint?,
     mode: NetScanMode,
     netScan: NetScanState,
+    wallEditor: WallEditor?,
     actions: MapActions,
     planActions: PlanActions,
+    wallActions: WallActions,
     onShowHistory: () -> Unit,
     onOpenReport: () -> Unit,
     modifier: Modifier = Modifier,
@@ -81,6 +103,11 @@ internal fun ManualMapArea(
     var adjustingScale by rememberSaveable { mutableStateOf(false) }
     val calibration = remember { mutableStateListOf<PlanPoint>() }
     val calibrating = plan is PlanState.NeedsScale || (plan is PlanState.Ready && adjustingScale)
+    val walls = (plan as? PlanState.Ready)?.walls.orEmpty()
+    val editor = wallEditor.takeIf { plan is PlanState.Ready && !calibrating }
+    // Hauteur des boutons du haut, qui passent à la ligne sur un écran étroit ou en grands caractères.
+    var commandsHeight by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
     val level = when (netScan) {
         is NetScanState.Running -> netScan.summary?.level
         is NetScanState.Completed -> netScan.result.summary.level
@@ -103,16 +130,22 @@ internal fun ManualMapArea(
                 PlanMapView(
                     plan = shownPlan,
                     map = (plan as? PlanState.Ready)?.map,
-                    position = if (calibrating) null else position,
+                    position = if (calibrating || editor != null) null else position,
                     calibration = calibration,
+                    walls = walls,
+                    wallChain = editor?.chainStart,
+                    selectedWall = editor?.selected,
                     contentPadding = PaddingValues(
                         start = Design.spaceSmall,
                         end = Design.spaceSmall,
-                        top = Design.planTopInset,
+                        // Boutons, puis la ligne de la consigne : le plan commence dessous.
+                        top = Design.spaceSmall * 2 + with(density) { commandsHeight.toDp() } + Design.touchTarget,
                         bottom = Design.mapBottomInset,
                     ),
-                    onTap = { point ->
+                    onTap = { point, tolerance ->
                         when {
+                            // Un mur peut s'arrêter sur le bord du plan : le toucher juste à côté compte.
+                            editor != null -> wallActions.tap(point, tolerance)
                             !shownPlan.contains(point) -> Unit
                             calibrating -> if (calibration.size < 2) calibration += point
                             netScan == NetScanState.Idle -> planActions.placeHere(point)
@@ -125,7 +158,7 @@ internal fun ManualMapArea(
             Column(Modifier.fillMaxSize().padding(Design.spaceSmall)) {
                 // Commandes de la visite en haut (elles passent à la ligne sur un écran étroit), consigne dessous.
                 FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().onSizeChanged { commandsHeight = it.height },
                     horizontalArrangement = Arrangement.spacedBy(Design.spaceExtraSmall, Alignment.End),
                     verticalArrangement = Arrangement.spacedBy(Design.spaceExtraSmall),
                 ) {
@@ -135,17 +168,23 @@ internal fun ManualMapArea(
                     TertiaryButton(onClick = onOpenReport, enabled = netScan !is NetScanState.Running) {
                         Text(stringResource(R.string.report_open))
                     }
-                    if (plan is PlanState.Ready && !calibrating && netScan == NetScanState.Idle) {
-                        TertiaryButton(onClick = {
-                            calibration.clear()
-                            adjustingScale = true
-                        }) { Text(stringResource(R.string.plan_scale_adjust)) }
+                    if (plan is PlanState.Ready) {
+                        // Toujours là une fois le plan prêt, quitte à être inactifs : le plan ne bouge pas d'un mode à l'autre.
+                        val idle = !calibrating && netScan == NetScanState.Idle && editor == null
+                        TertiaryButton(onClick = wallActions.edit, enabled = idle) { Text(stringResource(R.string.plan_walls_edit)) }
+                        TertiaryButton(
+                            onClick = {
+                                calibration.clear()
+                                adjustingScale = true
+                            },
+                            enabled = idle,
+                        ) { Text(stringResource(R.string.plan_scale_adjust)) }
                     }
                 }
                 Row(modifier = Modifier.fillMaxWidth().heightIn(min = Design.touchTarget), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f)) {
-                        planInstruction(plan, calibrating, calibration.size, position, netScan)?.let {
-                            StatusChip(stringResource(it), warning = false)
+                        planInstruction(plan, calibrating, calibration.size, position, netScan, editor)?.let {
+                            StatusChip(stringResource(it), warning = editor?.saveFailed == true)
                         }
                     }
                     if (plan is PlanState.Ready && !calibrating) MapLegendButton(forPlan = true)
@@ -169,6 +208,7 @@ internal fun ManualMapArea(
                             adjustingScale = false
                         },
                     )
+                    editor != null -> WallControls(editor, canUndo = editor.chainStart != null || walls.isNotEmpty(), wallActions)
                     plan is PlanState.Ready && netScan == NetScanState.Idle -> PlanScanControls(mode, position != null, actions)
                 }
             }
@@ -190,10 +230,23 @@ internal fun ManualMapArea(
     }
 }
 
-private fun planInstruction(plan: PlanState, calibrating: Boolean, points: Int, position: PlanPoint?, netScan: NetScanState): Int? = when {
+private fun planInstruction(
+    plan: PlanState,
+    calibrating: Boolean,
+    points: Int,
+    position: PlanPoint?,
+    netScan: NetScanState,
+    editor: WallEditor?,
+): Int? = when {
     netScan != NetScanState.Idle -> null
     calibrating -> if (points == 0) R.string.plan_scale_first else R.string.plan_scale_second
     plan !is PlanState.Ready -> null
+    editor != null -> when {
+        editor.saveFailed -> R.string.plan_walls_save_failed
+        editor.tool == WallTool.ERASE -> if (editor.selected == null) R.string.plan_walls_pick else R.string.plan_walls_picked
+        editor.chainStart == null -> R.string.plan_walls_first
+        else -> R.string.plan_walls_next
+    }
     position == null -> R.string.plan_place_yourself
     else -> R.string.plan_position_set
 }
@@ -262,6 +315,47 @@ private fun CalibrationControls(canCancel: Boolean, hasPoints: Boolean, onRestar
     ) {
         if (hasPoints) TertiaryButton(onClick = onRestart) { Text(stringResource(R.string.plan_scale_restart)) }
         if (canCancel) TertiaryButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
+    }
+}
+
+/**
+ * Tracer (chaque toucher termine un mur et commence le suivant) ou effacer (toucher un mur, puis
+ * confirmer). Chaque changement est enregistré aussitôt : « Terminer » ne fait que quitter le tracé.
+ */
+@Composable
+private fun WallControls(editor: WallEditor, canUndo: Boolean, actions: WallActions) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Design.spaceSmall),
+    ) {
+        val tools = listOf(WallTool.DRAW to R.string.plan_walls_draw, WallTool.ERASE to R.string.plan_walls_erase)
+        SingleChoiceSegmentedButtonRow {
+            tools.forEachIndexed { index, (tool, label) ->
+                SegmentedButton(
+                    selected = editor.tool == tool,
+                    onClick = { actions.selectTool(tool) },
+                    shape = SegmentedButtonDefaults.itemShape(index, tools.size),
+                ) { Text(stringResource(label)) }
+            }
+        }
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(Design.spaceExtraSmall, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(Design.spaceExtraSmall),
+        ) {
+            when (editor.tool) {
+                WallTool.DRAW -> {
+                    TertiaryButton(onClick = actions.undo, enabled = canUndo) { Text(stringResource(R.string.plan_walls_undo)) }
+                    TertiaryButton(onClick = actions.newWall, enabled = editor.chainStart != null) {
+                        Text(stringResource(R.string.plan_walls_new))
+                    }
+                }
+                WallTool.ERASE -> if (editor.selected != null) {
+                    DestructiveButton(onClick = actions.deleteSelected) { Text(stringResource(R.string.plan_walls_delete)) }
+                }
+            }
+            SecondaryButton(onClick = actions.finish) { Text(stringResource(R.string.plan_walls_done)) }
+        }
     }
 }
 
