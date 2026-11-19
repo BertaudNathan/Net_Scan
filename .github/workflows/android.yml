@@ -80,6 +80,9 @@ jobs:
       API_LEVEL: 36
       TARGET: google_apis
       ARCH: x86_64
+      # Téléphone réaliste (1080x2400) : sans profil, l'AVD générique 320x640 laisse trop peu de place
+      # au formulaire quand le clavier est ouvert, ce qui fausse les tests de toucher hors du formulaire.
+      PROFILE: pixel_6
     steps:
       - uses: actions/checkout@v4
 
@@ -108,7 +111,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-${{ env.API_LEVEL }}-${{ env.TARGET }}-${{ env.ARCH }}
+          key: avd-${{ env.API_LEVEL }}-${{ env.TARGET }}-${{ env.ARCH }}-${{ env.PROFILE }}
 
       - name: Créer l'AVD et son snapshot
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -117,6 +120,7 @@ jobs:
           api-level: ${{ env.API_LEVEL }}
           target: ${{ env.TARGET }}
           arch: ${{ env.ARCH }}
+          profile: ${{ env.PROFILE }}
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: false
@@ -128,6 +132,7 @@ jobs:
           api-level: ${{ env.API_LEVEL }}
           target: ${{ env.TARGET }}
           arch: ${{ env.ARCH }}
+          profile: ${{ env.PROFILE }}
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
