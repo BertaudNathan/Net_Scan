@@ -37,12 +37,18 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.set
 import com.example.MobileM2.Net_Scan.R
+import com.example.MobileM2.Net_Scan.domain.Coverage
+import com.example.MobileM2.Net_Scan.domain.FloorGrid
 import com.example.MobileM2.Net_Scan.domain.FloorMap
 import com.example.MobileM2.Net_Scan.domain.FloorPlan
 import com.example.MobileM2.Net_Scan.domain.FloorPoint
@@ -59,6 +65,7 @@ import kotlinx.coroutines.withContext
  * Plan importé avec la heatmap par-dessus, les murs tracés, les scans placés, la position choisie
  * (cible) et, pendant le réglage de l'échelle, les points d'étalonnage. Pendant le tracé des murs,
  * [wallChain] marque le début du prochain mur et [selectedWall] le mur choisi pour être effacé.
+ * Avec [coverage], les zones à mesurer sont hachurées et les scans suggérés numérotés.
  * Toucher indique un point du plan, avec la tolérance d'un doigt en pixels du plan au zoom actuel ;
  * pincer zoome, glisser déplace, toucher deux fois revient à la vue d'ensemble.
  */
@@ -74,6 +81,7 @@ internal fun PlanMapView(
     walls: List<PlanWall> = emptyList(),
     wallChain: PlanPoint? = null,
     selectedWall: Long? = null,
+    coverage: Coverage.Analyzed? = null,
 ) {
     val image by produceState<ImageBitmap?>(null, plan.imagePath) {
         value = withContext(Dispatchers.IO) { loadPlanImage(plan.imagePath) }
@@ -83,11 +91,14 @@ internal fun PlanMapView(
     val currentOnTap by rememberUpdatedState(onTap)
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
-    val description = planDescription(map, walls.size, position != null)
+    val description = planDescription(map, walls.size, coverage, position != null)
     val colors = MaterialTheme.colorScheme
     val surface = colors.surface
     val ink = colors.onSurface
     val heat = remember(map, plan) { map?.let { heatImage(it, plan) } }
+    val hatch = remember(coverage, plan) { coverage?.let { hatchImage(it, plan) } }
+    val textMeasurer = rememberTextMeasurer()
+    val numberStyle = MaterialTheme.typography.labelLarge.merge(TextStyle(color = PlanColors.onSuggestion, fontWeight = FontWeight.Bold))
 
     BoxWithConstraints(modifier.clearAndSetSemantics { contentDescription = description }) {
         val bitmap = image
@@ -156,6 +167,20 @@ internal fun PlanMapView(
                             )
                         }
                     }
+                    if (hatch != null && scale != null) {
+                        // Même principe : HATCH_PIXELS pixels par case, des rayures continues d'une case à l'autre.
+                        val cellPixels = FloorGrid.DEFAULT_CELL_SIZE / scale * fit
+                        clipRect(origin.x, origin.y, origin.x + plan.widthPx * fit, origin.y + plan.heightPx * fit) {
+                            drawImage(
+                                hatch.image,
+                                srcOffset = IntOffset.Zero,
+                                srcSize = IntSize(hatch.cols * HATCH_PIXELS, hatch.rows * HATCH_PIXELS),
+                                dstOffset = IntOffset(origin.x.roundToInt(), origin.y.roundToInt()),
+                                dstSize = IntSize((hatch.cols * cellPixels).roundToInt(), (hatch.rows * cellPixels).roundToInt()),
+                                filterQuality = FilterQuality.None,
+                            )
+                        }
+                    }
                 }
 
                 // Murs et repères à taille constante, quel que soit le zoom. Les liserés d'abord : un
@@ -206,6 +231,13 @@ internal fun PlanMapView(
                         drawLine(ink, point - Offset(0f, arm), point + Offset(0f, arm), strokeWidth = 2.dp.toPx())
                     }
                 }
+                coverage?.suggestions?.forEachIndexed { index, point ->
+                    val center = toScreen(point)
+                    drawCircle(PlanColors.casing, 14.dp.toPx(), center)
+                    drawCircle(PlanColors.suggestion, 12.dp.toPx(), center)
+                    val number = textMeasurer.measure((index + 1).toString(), numberStyle)
+                    drawText(number, topLeft = center - Offset(number.size.width / 2f, number.size.height / 2f))
+                }
                 position?.let(::toScreen)?.let { center ->
                     drawCircle(surface, 14.dp.toPx(), center)
                     drawCircle(ink, 12.dp.toPx(), center, style = Stroke(width = 3.dp.toPx()))
@@ -218,6 +250,26 @@ internal fun PlanMapView(
 
 /** Heatmap en image : un pixel par case de la grille, transparent hors de la zone estimée. */
 private class HeatImage(val image: ImageBitmap, val cols: Int, val rows: Int)
+
+/** Zones à mesurer en image : [HATCH_PIXELS] pixels de côté par case, rayées en diagonale. */
+private fun hatchImage(coverage: Coverage.Analyzed, plan: FloorPlan): HeatImage? {
+    val scale = plan.metersPerPixel ?: return null
+    val cols = ceil(plan.widthPx * scale / FloorGrid.DEFAULT_CELL_SIZE).toInt().coerceAtLeast(1)
+    val rows = ceil(plan.heightPx * scale / FloorGrid.DEFAULT_CELL_SIZE).toInt().coerceAtLeast(1)
+    val bitmap = createBitmap(cols * HATCH_PIXELS, rows * HATCH_PIXELS)
+    val stripe = PlanColors.toMeasure.toArgb()
+    for (cell in coverage.uncovered) {
+        if (cell.col !in 0 until cols || cell.row !in 0 until rows) continue
+        for (dx in 0 until HATCH_PIXELS) {
+            for (dy in 0 until HATCH_PIXELS) {
+                val x = cell.col * HATCH_PIXELS + dx
+                val y = cell.row * HATCH_PIXELS + dy
+                if ((x + y) % HATCH_PIXELS == 0) bitmap[x, y] = stripe
+            }
+        }
+    }
+    return HeatImage(bitmap.asImageBitmap(), cols, rows)
+}
 
 private fun heatImage(map: FloorMap, plan: FloorPlan): HeatImage? =
     planHeatBitmap(map, plan)?.let { HeatImage(it.asImageBitmap(), it.width, it.height) }
@@ -248,15 +300,21 @@ private fun loadPlanImage(path: String): ImageBitmap? =
     BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.RGB_565 })?.asImageBitmap()
 
 @Composable
-private fun planDescription(map: FloorMap?, wallCount: Int, positioned: Boolean): String {
+private fun planDescription(map: FloorMap?, wallCount: Int, coverage: Coverage.Analyzed?, positioned: Boolean): String {
     val count = map?.measurements?.size ?: 0
     val measurements = pluralStringResource(R.plurals.map_measurements, count, count)
     val walls = pluralStringResource(R.plurals.plan_walls, wallCount, wallCount)
+    var contents = stringResource(R.string.plan_contents, measurements, walls)
+    if (coverage != null) {
+        val suggested = pluralStringResource(R.plurals.coverage_suggestions, coverage.suggestions.size, coverage.suggestions.size)
+        contents = stringResource(R.string.plan_contents, contents, stringResource(R.string.coverage_description, coverage.percent, suggested))
+    }
     val position = stringResource(if (positioned) R.string.plan_position_marked else R.string.plan_position_missing)
-    return stringResource(R.string.plan_description, stringResource(R.string.plan_contents, measurements, walls), position)
+    return stringResource(R.string.plan_description, contents, position)
 }
 
 private const val MAX_ZOOM = 8f
+private const val HATCH_PIXELS = 4
 
 /** La moitié d'une cible tactile : un doigt couvre au moins cela autour du point touché. */
 private val TOUCH_TOLERANCE = 24.dp

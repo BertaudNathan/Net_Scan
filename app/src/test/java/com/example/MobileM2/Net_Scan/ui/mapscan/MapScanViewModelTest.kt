@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.MobileM2.Net_Scan.domain.AlignmentRules
+import com.example.MobileM2.Net_Scan.domain.Coverage
 import com.example.MobileM2.Net_Scan.domain.FloorPlan
 import com.example.MobileM2.Net_Scan.domain.FloorPlanRepository
 import com.example.MobileM2.Net_Scan.domain.FloorPoint
@@ -701,6 +702,53 @@ class MapScanViewModelTest {
         // Pendant le tracé, toucher le plan dessine : la position pour le scan ne bouge pas.
         viewModel.placeHere(PlanPoint(0.5f, 0.5f))
         assertNull(viewModel.manualPosition.value)
+    }
+
+    @Test fun theZonesToMeasureAreShownOnRequest() = vmTest {
+        manualVisit()
+        plans.walls.value = outline()
+        val viewModel = viewModel()
+        assertEquals(CoverageState.Hidden, viewModel.coverage.value)
+        viewModel.toggleCoverage()
+        runCurrent()
+        val analyzed = (viewModel.coverage.value as CoverageState.Shown).coverage as Coverage.Analyzed
+        // Aucun scan : tout le bâtiment est à mesurer, et des scans sont suggérés.
+        assertEquals(0f, analyzed.ratio)
+        assertTrue(analyzed.suggestions.isNotEmpty())
+        viewModel.toggleCoverage()
+        runCurrent()
+        assertEquals(CoverageState.Hidden, viewModel.coverage.value)
+    }
+
+    @Test fun anOpenOutlineIsReported() = vmTest {
+        manualVisit()
+        plans.walls.value = outline().drop(1)
+        val viewModel = viewModel()
+        viewModel.toggleCoverage()
+        runCurrent()
+        assertEquals(CoverageState.Shown(Coverage.OutlineOpen), viewModel.coverage.value)
+    }
+
+    @Test fun theZonesToMeasureFollowNewScansAndWalls() = vmTest {
+        manualVisit()
+        plans.walls.value = outline()
+        val viewModel = viewModel()
+        viewModel.toggleCoverage()
+        runCurrent()
+        fun uncovered() = ((viewModel.coverage.value as CoverageState.Shown).coverage as Coverage.Analyzed).uncovered.size
+        val before = uncovered()
+        plans.measurements.value = listOf(PlanMeasurement(PlanPoint(0.3f, 0.4f), SignalLevel.HIGH))
+        runCurrent()
+        assertTrue(uncovered() < before)
+        plans.walls.value = outline().drop(1)
+        runCurrent()
+        assertEquals(CoverageState.Shown(Coverage.OutlineOpen), viewModel.coverage.value)
+    }
+
+    /** Contour fermé d'un bâtiment de 20 × 15 m sur le plan de [manualVisit]. */
+    private fun outline(): List<PlanWall> {
+        val corners = listOf(PlanPoint(0.1f, 0.1f), PlanPoint(0.5f, 0.1f), PlanPoint(0.5f, 0.7f), PlanPoint(0.1f, 0.7f))
+        return corners.indices.map { PlanWall(it + 1L, corners[it], corners[(it + 1) % corners.size]) }
     }
 
     /** Visite en mode manuel avec un plan de 2000 × 1000 pixels. */

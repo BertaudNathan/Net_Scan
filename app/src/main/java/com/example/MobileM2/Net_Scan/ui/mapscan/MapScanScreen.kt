@@ -87,6 +87,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.MobileM2.Net_Scan.R
+import com.example.MobileM2.Net_Scan.domain.CoverageRules
 import com.example.MobileM2.Net_Scan.domain.HeatCell
 import com.example.MobileM2.Net_Scan.domain.MappingMode
 import com.example.MobileM2.Net_Scan.domain.NetScanMode
@@ -111,6 +112,7 @@ import com.example.MobileM2.Net_Scan.ui.theme.TertiaryButton
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 private val SIGNAL_PERMISSIONS = arrayOf(
     Manifest.permission.ACCESS_FINE_LOCATION,
@@ -138,6 +140,7 @@ fun MapScanScreen(
     val planImport by viewModel.planImport.collectAsStateWithLifecycle()
     val manualPosition by viewModel.manualPosition.collectAsStateWithLifecycle()
     val wallEditor by viewModel.wallEditor.collectAsStateWithLifecycle()
+    val coverage by viewModel.coverage.collectAsStateWithLifecycle()
     val manual = (visit as? VisitState.Loaded)?.visit?.mode == MappingMode.MANUAL
     var showLeave by rememberSaveable { mutableStateOf(false) }
     var showHistory by rememberSaveable { mutableStateOf(false) }
@@ -195,6 +198,7 @@ fun MapScanScreen(
                         mode = mode,
                         netScan = netScan,
                         wallEditor = wallEditor,
+                        coverage = coverage,
                         actions = MapActions(
                             startNetScan = startNetScan,
                             selectMode = viewModel::selectMode,
@@ -208,6 +212,7 @@ fun MapScanScreen(
                             importPlan = { planPicker.launch(arrayOf("image/*", "application/pdf")) },
                             placeHere = viewModel::placeHere,
                             setScale = viewModel::setScale,
+                            toggleCoverage = viewModel::toggleCoverage,
                         ),
                         wallActions = WallActions(
                             edit = viewModel::editWalls,
@@ -888,6 +893,12 @@ internal fun MapLegend(modifier: Modifier = Modifier, forPlan: Boolean = false) 
         }
         if (forPlan) {
             LegendRow(stringResource(R.string.legend_plan_wall)) { WallSwatch() }
+            LegendRow(stringResource(R.string.legend_coverage, CoverageRules.COVERAGE_RADIUS.roundToInt())) { CoverageSwatch() }
+            LegendRow(stringResource(R.string.legend_suggestion)) {
+                Box(Modifier.size(20.dp).background(PlanColors.suggestion, CircleShape), contentAlignment = Alignment.Center) {
+                    Text("1", color = PlanColors.onSuggestion, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                }
+            }
             LegendRow(stringResource(R.string.legend_plan_position)) {
                 Box(Modifier.size(16.dp).border(3.dp, colors.onSurface, CircleShape), contentAlignment = Alignment.Center) {
                     Box(Modifier.size(5.dp).background(colors.onSurface, CircleShape))
@@ -935,6 +946,21 @@ private fun HatchSwatch() {
                 }
             }
             .border(1.dp, colors.outline, Design.swatchShape),
+    )
+}
+
+/** Zone à mesurer, comme sur le plan : rayures bleu nuit sur le blanc du plan. */
+@Composable
+private fun CoverageSwatch() {
+    Box(
+        Modifier.size(18.dp)
+            .clip(Design.swatchShape)
+            .drawBehind {
+                drawRect(PlanColors.casing)
+                val step = size.width / 3
+                for (i in 1..5) drawLine(PlanColors.toMeasure, Offset(0f, i * step), Offset(i * step, 0f), 2.dp.toPx())
+            }
+            .border(1.dp, MaterialTheme.colorScheme.outline, Design.swatchShape),
     )
 }
 

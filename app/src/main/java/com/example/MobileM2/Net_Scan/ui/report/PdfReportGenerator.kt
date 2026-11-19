@@ -16,6 +16,7 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.core.graphics.withClip
 import com.example.MobileM2.Net_Scan.R
 import com.example.MobileM2.Net_Scan.domain.FloorMap
 import com.example.MobileM2.Net_Scan.domain.FloorPlan
@@ -254,7 +255,7 @@ private class ReportLayout(private val document: PdfDocument, private val res: R
         } else {
             res.getString(R.string.report_plan_no_scale)
         }
-        block(intro, body)
+        block(if (report.walls.isEmpty()) intro else intro + " " + res.getString(R.string.report_plan_walls), body)
         y += 8f
 
         val fit = min(Pdf.CONTENT_WIDTH / plan.widthPx, Pdf.PLAN_MAX_HEIGHT / plan.heightPx)
@@ -276,6 +277,24 @@ private class ReportLayout(private val document: PdfDocument, private val res: R
             canvas.clipRect(area)
             canvas.drawBitmap(sharp, null, RectF(left, area.top, left + heat.width * cellPoints, area.top + heat.height * cellPoints), Paint())
             canvas.restore()
+        }
+        // Murs tracés à la main, comme à l'écran : trait bleu nuit et liseré blanc, les liserés d'abord.
+        if (report.walls.isNotEmpty()) {
+            val casing = Paint(stroke).apply { color = Pdf.WHITE; strokeWidth = WALL_WIDTH + 1.6f; strokeCap = Paint.Cap.ROUND }
+            val line = Paint(stroke).apply { color = Pdf.NAVY; strokeWidth = WALL_WIDTH; strokeCap = Paint.Cap.ROUND }
+            canvas.withClip(area) {
+                for (paint in listOf(casing, line)) {
+                    for (wall in report.walls) {
+                        drawLine(
+                            left + wall.start.u * width,
+                            area.top + wall.start.v * height,
+                            left + wall.end.u * width,
+                            area.top + wall.end.v * height,
+                            paint,
+                        )
+                    }
+                }
+            }
         }
         canvas.drawRect(area, stroke)
 
@@ -607,6 +626,9 @@ private class ReportLayout(private val document: PdfDocument, private val res: R
         const val HEAT_MAX_SIDE = 4096
 
         const val SCALE_BAR_SPACE = 20f
+
+        /** Épaisseur d'un mur tracé sur le plan, en points. */
+        const val WALL_WIDTH = 2.2f
         val SCALE_STEPS = listOf(1, 2, 5, 10, 20, 50, 100)
     }
 }

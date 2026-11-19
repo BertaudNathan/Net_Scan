@@ -20,6 +20,8 @@ data class VisitReport(
     val plan: FloorPlan? = null,
     /** Dernier parcours ARCore de la visite, celui que montre l'écran ; null s'il n'y en a pas. */
     val recording: SavedRecording? = null,
+    /** Murs tracés à la main sur [plan] : la heatmap les contourne, comme à l'écran. */
+    val walls: List<PlanWall> = emptyList(),
 ) {
     /** Points placés sur [plan] ou, sans plan, sur la carte de [recording], avec leur numéro de rapport. */
     val placedPoints: List<ReportPoint> = when {
@@ -47,7 +49,11 @@ data class VisitReport(
     /** Heatmap du plan, comme à l'écran ; null sans plan ou tant que son échelle n'est pas réglée. */
     val planMap: FloorMap? by lazy {
         plan?.let { floorPlan ->
-            FloorMap.onPlan(floorPlan, placedPoints.map { PlanMeasurement(checkNotNull(it.scan.planPosition), it.scan.summary.level) })
+            FloorMap.onPlan(
+                floorPlan,
+                placedPoints.map { PlanMeasurement(checkNotNull(it.scan.planPosition), it.scan.summary.level) },
+                walls = walls,
+            )
         }
     }
 
@@ -71,6 +77,7 @@ fun buildVisitReport(
     generatedAt: Long,
     plan: FloorPlan? = null,
     recording: SavedRecording? = null,
+    walls: List<PlanWall> = emptyList(),
 ): VisitReport {
     val ordered = scans.sortedWith(compareBy<NetScan> { it.startedAt }.thenBy { it.id })
     return VisitReport(
@@ -79,6 +86,7 @@ fun buildVisitReport(
         generatedAt = generatedAt,
         plan = plan,
         recording = recording,
+        walls = walls,
     )
 }
 

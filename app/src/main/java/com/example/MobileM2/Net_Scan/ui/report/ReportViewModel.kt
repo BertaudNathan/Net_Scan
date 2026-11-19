@@ -77,7 +77,13 @@ class ReportViewModel(
                     val scans = netScanRepository.observeForVisit(visitId).first()
                     // Une visite se cartographie d'une seule façon : plan importé ou parcours ARCore.
                     val report = when (visit.mode) {
-                        MappingMode.MANUAL -> buildVisitReport(visit, scans, clock(), plan = planRepository.observePlan(visitId).first())
+                        MappingMode.MANUAL -> buildVisitReport(
+                            visit,
+                            scans,
+                            clock(),
+                            plan = planRepository.observePlan(visitId).first(),
+                            walls = planRepository.observeWalls(visitId).first(),
+                        )
                         MappingMode.ARCORE ->
                             buildVisitReport(visit, scans, clock(), recording = recordingRepository.observeLatest(visitId).first())
                     }

@@ -38,6 +38,11 @@ data class FloorPlan(
         FloorPoint(point.u * widthPx * it, point.v * heightPx * it)
     }
 
+    /** Inverse de [toMeters]. */
+    fun toPlan(point: FloorPoint): PlanPoint? = metersPerPixel?.let {
+        PlanPoint(point.x / it / widthPx, point.z / it / heightPx)
+    }
+
     fun contains(point: PlanPoint) = point.u in 0f..1f && point.v in 0f..1f
 }
 
@@ -135,7 +140,7 @@ fun FloorMap.Companion.onPlan(
 }
 
 /** Nombre de colonnes et de lignes de la grille qui couvrent le plan ; null sans échelle. */
-private fun FloorPlan.gridBounds(grid: FloorGrid): Pair<Int, Int>? {
+internal fun FloorPlan.gridBounds(grid: FloorGrid): Pair<Int, Int>? {
     val widthMeters = widthMeters ?: return null
     val heightMeters = heightMeters ?: return null
     return ceil(widthMeters / grid.cellSize).toInt() to ceil(heightMeters / grid.cellSize).toInt()

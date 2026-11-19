@@ -117,6 +117,13 @@ object PlanColors {
     val wall = Navy
     val casing = White
     val selected = ErrorLight
+
+    /** Hachures des zones à mesurer : assez transparentes pour laisser lire la heatmap dessous. */
+    val toMeasure = Navy.copy(alpha = 0.6f)
+
+    /** Pastille numérotée d'un scan suggéré. */
+    val suggestion = Navy
+    val onSuggestion = White
 }
 
 /** Bouton d'enregistrement façon caméra : pastille rouge pour démarrer, carré noir pour arrêter. */

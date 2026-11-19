@@ -18,8 +18,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -42,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -53,6 +57,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.MobileM2.Net_Scan.R
+import com.example.MobileM2.Net_Scan.domain.Coverage
+import com.example.MobileM2.Net_Scan.domain.CoverageRules
 import com.example.MobileM2.Net_Scan.domain.NetScanMode
 import com.example.MobileM2.Net_Scan.domain.PlanPoint
 import com.example.MobileM2.Net_Scan.ui.theme.Design
@@ -61,12 +67,14 @@ import com.example.MobileM2.Net_Scan.ui.theme.PrimaryButton
 import com.example.MobileM2.Net_Scan.ui.theme.SecondaryButton
 import com.example.MobileM2.Net_Scan.ui.theme.SignalColors
 import com.example.MobileM2.Net_Scan.ui.theme.TertiaryButton
+import kotlin.math.roundToInt
 
 /** Actions propres au mode manuel. */
 internal class PlanActions(
     val importPlan: () -> Unit,
     val placeHere: (PlanPoint) -> Unit,
     val setScale: (PlanPoint, PlanPoint, Float) -> Boolean,
+    val toggleCoverage: () -> Unit,
 )
 
 /** Tracé des murs sur le plan. */
@@ -93,6 +101,7 @@ internal fun ManualMapArea(
     mode: NetScanMode,
     netScan: NetScanState,
     wallEditor: WallEditor?,
+    coverage: CoverageState,
     actions: MapActions,
     planActions: PlanActions,
     wallActions: WallActions,
@@ -105,6 +114,8 @@ internal fun ManualMapArea(
     val calibrating = plan is PlanState.NeedsScale || (plan is PlanState.Ready && adjustingScale)
     val walls = (plan as? PlanState.Ready)?.walls.orEmpty()
     val editor = wallEditor.takeIf { plan is PlanState.Ready && !calibrating }
+    // Les zones à mesurer restent visibles pendant le tracé des murs : on voit le contour se fermer.
+    val analyzed = ((coverage as? CoverageState.Shown)?.coverage as? Coverage.Analyzed)?.takeIf { plan is PlanState.Ready && !calibrating }
     // Hauteur des boutons du haut, qui passent à la ligne sur un écran étroit ou en grands caractères.
     var commandsHeight by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
@@ -135,6 +146,7 @@ internal fun ManualMapArea(
                     walls = walls,
                     wallChain = editor?.chainStart,
                     selectedWall = editor?.selected,
+                    coverage = analyzed,
                     contentPadding = PaddingValues(
                         start = Design.spaceSmall,
                         end = Design.spaceSmall,
@@ -179,12 +191,20 @@ internal fun ManualMapArea(
                             },
                             enabled = idle,
                         ) { Text(stringResource(R.string.plan_scale_adjust)) }
+                        FilterChip(
+                            selected = coverage != CoverageState.Hidden,
+                            onClick = planActions.toggleCoverage,
+                            label = { Text(stringResource(R.string.coverage_toggle)) },
+                            enabled = !calibrating,
+                            // Toujours la même icône : la largeur du bouton ne change pas quand on l'active.
+                            leadingIcon = { Icon(Icons.Outlined.Place, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        )
                     }
                 }
                 Row(modifier = Modifier.fillMaxWidth().heightIn(min = Design.touchTarget), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f)) {
-                        planInstruction(plan, calibrating, calibration.size, position, netScan, editor)?.let {
-                            StatusChip(stringResource(it), warning = editor?.saveFailed == true)
+                        planInstruction(plan, calibrating, calibration.size, position, netScan, editor, coverage)?.let {
+                            StatusChip(it.text, warning = it.warning)
                         }
                     }
                     if (plan is PlanState.Ready && !calibrating) MapLegendButton(forPlan = true)
@@ -230,6 +250,9 @@ internal fun ManualMapArea(
     }
 }
 
+private class Instruction(val text: String, val warning: Boolean = false)
+
+@Composable
 private fun planInstruction(
     plan: PlanState,
     calibrating: Boolean,
@@ -237,18 +260,35 @@ private fun planInstruction(
     position: PlanPoint?,
     netScan: NetScanState,
     editor: WallEditor?,
-): Int? = when {
+    coverage: CoverageState,
+): Instruction? = when {
     netScan != NetScanState.Idle -> null
-    calibrating -> if (points == 0) R.string.plan_scale_first else R.string.plan_scale_second
+    calibrating -> Instruction(stringResource(if (points == 0) R.string.plan_scale_first else R.string.plan_scale_second))
     plan !is PlanState.Ready -> null
     editor != null -> when {
-        editor.saveFailed -> R.string.plan_walls_save_failed
-        editor.tool == WallTool.ERASE -> if (editor.selected == null) R.string.plan_walls_pick else R.string.plan_walls_picked
-        editor.chainStart == null -> R.string.plan_walls_first
-        else -> R.string.plan_walls_next
+        editor.saveFailed -> Instruction(stringResource(R.string.plan_walls_save_failed), warning = true)
+        editor.tool == WallTool.ERASE ->
+            Instruction(stringResource(if (editor.selected == null) R.string.plan_walls_pick else R.string.plan_walls_picked))
+        editor.chainStart == null -> Instruction(stringResource(R.string.plan_walls_first))
+        else -> Instruction(stringResource(R.string.plan_walls_next))
     }
-    position == null -> R.string.plan_place_yourself
-    else -> R.string.plan_position_set
+    position != null -> Instruction(stringResource(R.string.plan_position_set))
+    coverage is CoverageState.Shown -> coverageInstruction(coverage.coverage)
+    coverage == CoverageState.Computing -> Instruction(stringResource(R.string.coverage_computing))
+    else -> Instruction(stringResource(R.string.plan_place_yourself))
+}
+
+@Composable
+private fun coverageInstruction(coverage: Coverage): Instruction = when {
+    coverage == Coverage.OutlineOpen ->
+        Instruction(stringResource(R.string.coverage_outline_open, CoverageRules.MAX_DOOR_WIDTH.roundToInt()), warning = true)
+    coverage !is Coverage.Analyzed -> Instruction(stringResource(R.string.plan_place_yourself))
+    coverage.suggestions.isNotEmpty() -> {
+        val count = coverage.suggestions.size
+        Instruction(stringResource(R.string.coverage_summary, coverage.percent, pluralStringResource(R.plurals.coverage_suggestions, count, count)))
+    }
+    coverage.uncovered.isEmpty() -> Instruction(stringResource(R.string.coverage_complete))
+    else -> Instruction(stringResource(R.string.coverage_corners, coverage.percent))
 }
 
 @Composable

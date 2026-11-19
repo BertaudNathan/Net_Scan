@@ -127,6 +127,8 @@
     <string name="legend_position">Point et flèche : votre position</string>
     <string name="legend_plan_estimated">Couleur atténuée : estimé d’après les scans voisins, sans traverser les murs tracés</string>
     <string name="legend_plan_wall">Trait bleu nuit : mur tracé à la main</string>
+    <string name="legend_coverage">Hachures : à plus de %1$d m d’un scan, zone à mesurer</string>
+    <string name="legend_suggestion">Numéro : scan suggéré, le plus utile en premier</string>
     <string name="legend_plan_position">Cible : votre position pour le prochain scan</string>
 
     <!-- Mode manuel : plan importé -->
@@ -167,6 +169,18 @@
     <string name="plan_walls_new">Nouveau mur</string>
     <string name="plan_walls_delete">Effacer ce mur</string>
     <string name="plan_walls_done">Terminer</string>
+    <string name="coverage_toggle">Zones à mesurer</string>
+    <string name="coverage_computing">Recherche des zones à mesurer…</string>
+    <string name="coverage_outline_open">Contour ouvert : fermez les murs extérieurs (portes de %1$d m au plus)</string>
+    <string name="coverage_summary">Couverture %1$d\u00A0%% · %2$s</string>
+    <string name="coverage_complete">Tout le bâtiment est couvert</string>
+    <string name="coverage_corners">Couverture %1$d\u00A0%% : plus de scan utile</string>
+    <string name="coverage_description">couverture %1$d\u00A0%%, %2$s</string>
+    <plurals name="coverage_suggestions">
+        <item quantity="one">%1$d scan suggéré</item>
+        <item quantity="many">%1$d de scans suggérés</item>
+        <item quantity="other">%1$d scans suggérés</item>
+    </plurals>
     <string name="plan_walls_save_failed">Ce changement n’a pas été enregistré. Réessayez.</string>
 
     <string name="record_start">Démarrer l’enregistrement</string>
@@ -275,6 +289,7 @@
     <string name="report_plan_placeholder">Emplacement du plan</string>
     <string name="report_points_legend">Points à reporter sur le plan</string>
     <string name="report_plan_heatmap_intro">Couleur franche : niveau mesuré à cet endroit. Couleur pâle : niveau estimé à partir des mesures voisines, d’autant plus pâle qu’elles sont loin (au-delà de %1$d m, rien n’est estimé). Reportez sur le plan l’emplacement retenu pour l’antenne.</string>
+    <string name="report_plan_walls">Trait bleu nuit : mur tracé sur le plan ; les estimations ne le traversent pas.</string>
     <string name="report_plan_no_scale">L’échelle du plan n’a pas été réglée : les points de mesure sont placés, mais la heatmap n’est pas disponible. Reportez sur le plan l’emplacement retenu pour l’antenne.</string>
     <string name="report_recording_intro">Carte du dernier parcours ARCore, vue de dessus (direction de départ vers le haut). Couleur franche : niveau mesuré ; couleur pâle : niveau estimé à partir des mesures voisines (jusqu’à %1$d m de marche) ; hachures : sol vu sans estimation ; gris foncé : murs et obstacles ; trait : trajet. Reportez sur la carte l’emplacement retenu pour l’antenne.</string>
     <string name="report_scale_meters">%1$d m</string>
