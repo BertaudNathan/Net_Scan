@@ -119,6 +119,7 @@ private val SIGNAL_PERMISSIONS = arrayOf(
 fun MapScanScreen(
     viewModel: MapScanViewModel,
     onClose: () -> Unit,
+    onOpenReport: () -> Unit = {},
     handedness: Handedness = Handedness.RIGHT,
     cameraPreview: @Composable (Modifier) -> Unit,
 ) {
@@ -181,6 +182,7 @@ fun MapScanScreen(
                     recording = recording,
                     handedness = handedness,
                     onShowHistory = { showHistory = true },
+                    onOpenReport = onOpenReport,
                     actions = MapActions(
                         startNetScan = startNetScan,
                         selectMode = viewModel::selectMode,
@@ -299,6 +301,7 @@ private fun MapArea(
     recording: RecordingState,
     handedness: Handedness,
     onShowHistory: () -> Unit,
+    onOpenReport: () -> Unit,
     actions: MapActions,
     modifier: Modifier = Modifier,
 ) {
@@ -348,6 +351,10 @@ private fun MapArea(
                         onClick = onShowHistory,
                         enabled = netScan !is NetScanState.Running,
                     ) { Text(stringResource(R.string.scan_history_open)) }
+                    TertiaryButton(
+                        onClick = onOpenReport,
+                        enabled = netScan !is NetScanState.Running,
+                    ) { Text(stringResource(R.string.report_open)) }
                     if (map is MapState.Ready) MapLegendButton()
                 }
                 Box(

@@ -42,6 +42,9 @@ import com.example.MobileM2.Net_Scan.ui.PreferencesViewModel
 import com.example.MobileM2.Net_Scan.ui.mapscan.ArCorePreview
 import com.example.MobileM2.Net_Scan.ui.mapscan.MapScanScreen
 import com.example.MobileM2.Net_Scan.ui.mapscan.MapScanViewModel
+import com.example.MobileM2.Net_Scan.ui.report.PdfReportGenerator
+import com.example.MobileM2.Net_Scan.ui.report.ReportScreen
+import com.example.MobileM2.Net_Scan.ui.report.ReportViewModel
 import com.example.MobileM2.Net_Scan.ui.theme.Design
 import com.example.MobileM2.Net_Scan.ui.theme.NetScanTheme
 import com.example.MobileM2.Net_Scan.ui.theme.TertiaryButton
@@ -52,6 +55,7 @@ private const val VISITS_ROUTE = "visits"
 private const val PREFERENCES_ROUTE = "preferences"
 private const val VISIT_ID = "visitId"
 private const val MAP_SCAN_ROUTE = "visits/{$VISIT_ID}"
+private const val REPORT_ROUTE = "visits/{$VISIT_ID}/report"
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -158,8 +162,37 @@ class MainActivity : ComponentActivity() {
                                 MapScanScreen(
                                     viewModel = mapScanViewModel,
                                     onClose = { navController.popBackStack(VISITS_ROUTE, inclusive = false) },
+                                    onOpenReport = {
+                                        if (navController.currentDestination?.route == MAP_SCAN_ROUTE) {
+                                            navController.navigate("visits/$visitId/report") { launchSingleTop = true }
+                                        }
+                                    },
                                     handedness = current.handedness,
                                     cameraPreview = { modifier -> ArCorePreview(tracker, modifier) },
+                                )
+                            }
+                            composable(
+                                route = REPORT_ROUTE,
+                                arguments = listOf(navArgument(VISIT_ID) { type = NavType.LongType }),
+                            ) { entry ->
+                                val visitId = entry.arguments?.getLong(VISIT_ID) ?: 0L
+                                val reportViewModel: ReportViewModel = viewModel(
+                                    factory = viewModelFactory {
+                                        initializer {
+                                            ReportViewModel(
+                                                visitId = visitId,
+                                                visitRepository = RoomVisitRepository(database.visitDao()),
+                                                netScanRepository = RoomNetScanRepository(database.netScanDao()),
+                                                generator = PdfReportGenerator(applicationContext),
+                                            )
+                                        }
+                                    },
+                                )
+                                ReportScreen(
+                                    viewModel = reportViewModel,
+                                    onBack = {
+                                        if (navController.currentDestination?.route == REPORT_ROUTE) navController.popBackStack()
+                                    },
                                 )
                             }
                         }

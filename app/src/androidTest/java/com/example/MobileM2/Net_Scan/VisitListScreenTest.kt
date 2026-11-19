@@ -176,8 +176,14 @@ class VisitListScreenTest {
         showScreen()
         compose.onNodeWithText(text(R.string.new_scan)).performClick()
         compose.onNodeWithText(text(R.string.building_name)).performTextInput("Magasin")
+        // Le clavier, ouvert par la saisie, remonte le formulaire : on touche juste au-dessus de son
+        // bord haut (mesuré depuis le titre) plutôt qu'à une proportion fixe de l'écran.
+        compose.waitForIdle()
+        val titleTop = compose.onNodeWithText(text(R.string.dialog_title)).fetchSemanticsNode().boundsInRoot.top
+        val outside = titleTop - with(compose.density) { 48.dp.toPx() }
+        assertTrue("Pas de place au-dessus du formulaire pour toucher en dehors", outside > 0f)
         compose.onNode(isDialog()).performTouchInput {
-            click(Offset(width / 2f, height * 0.1f))
+            click(Offset(width / 2f, outside))
         }
         compose.onNodeWithText(text(R.string.discard_title)).assertIsDisplayed()
         compose.onNodeWithText(text(R.string.keep_editing)).performClick()

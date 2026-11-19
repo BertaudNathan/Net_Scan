@@ -8,6 +8,7 @@ Toucher une visite ouvre son écran de scan :
 - au centre, la carte du parcours vue de dessus, avec la heatmap du réseau (voir plus bas) ;
 - en bas, le bouton **Scan réseau** : il mesure le réseau mobile réel pendant un minuteur (20, 30 ou 60 s) ou en chrono libre (20 s minimum). Il affiche le niveau INEXISTANT, FAIBLE, MOYEN ou HAUT sur un filtre coloré, puis enregistre la médiane dans la visite. Les valeurs brutes (RSRP, SINR, bande, cellule) sont repliées dans « Détails techniques ». Lancer un scan démarre l'enregistrement s'il est arrêté, pour que la mesure soit placée sur la carte ;
 - le bouton **Historique des mesures** permet de consulter les mesures enregistrées pour cette visite, de la plus récente à la plus ancienne, avec leur date, opérateur, durée, niveau et détails techniques ;
+- le bouton **Rapport** ouvre l'écran du rapport PDF, généré hors ligne (voir plus bas) ;
 - en bas, à droite par défaut, le bouton d'enregistrement (rond rouge pour démarrer, carré noir pour arrêter). Il enregistre le parcours suivi par ARCore.
 
 ### Carte et heatmap (paliers 1 et 2)
@@ -28,7 +29,18 @@ Les seuils suivent la synthèse du projet : RSRP > −80 dBm ou SINR > 13 dB pou
 
 Le scan réseau demande la localisation précise (Android l'exige pour lire les informations de cellule) et l'accès au téléphone. ARCore demande la caméra, et lit le gyroscope et l'accéléromètre à haute fréquence (`HIGH_SAMPLING_RATE_SENSORS`, accordée sans demande à l'utilisateur) : sans elle, Android 12+ bride ces capteurs et le suivi décroche. Des sources simulées de mesures (`SimulatedSignalSource`) et de positions (`SimulatedPositionSource`) servent aux tests automatiques ; quand l'une d'elles est utilisée, l'écran affiche « Données simulées ».
 
-Le rapport PDF, les annotations d'obstacles et le positionnement manuel sur un plan ne sont pas encore disponibles.
+### Rapport PDF
+
+L'écran **Rapport** génère un PDF A4 à partir des mesures enregistrées, sans connexion, puis en affiche l'aperçu. Il peut être téléchargé (l'utilisateur choisit l'emplacement, par exemple Téléchargements) ou envoyé par e-mail (choix de l'application, PDF en pièce jointe). Le PDF contient :
+
+1. les informations de la visite et une synthèse client : nombre de points par niveau et points à couvrir en priorité ;
+2. une page **plan** : un cadre réservé au plan des locaux, les pastilles P1, P2… à la couleur de leur niveau à y reporter, et un encadré pour le **placement de l'antenne** (emplacement, hauteur et fixation, alimentation, remarques) ;
+3. le tableau des mesures (date, opérateur, technologie, niveau, durée) ;
+4. une annexe technique (RSRP, SINR, bande, cellule, nombre de lectures, mode).
+
+Les points sont numérotés dans l'ordre chronologique. La carte ARCore et la heatmap ne sont pas encore reprises dans le PDF : le cadre du plan est à compléter à la main. Seul le dernier PDF généré est conservé dans le cache de l'application ; il n'est envoyé nulle part sans action de l'utilisateur.
+
+Les annotations d'obstacles et le positionnement manuel sur un plan ne sont pas encore disponibles.
 
 ## Lancer le projet
 
@@ -39,3 +51,22 @@ Ouvrir le projet dans Android Studio avec le SDK Android configuré, puis lancer
 ```
 
 Le thème peut être réglé sur clair, sombre ou automatique selon le système dans les préférences. La préférence gaucher/droitier place les boutons de fermeture et d'enregistrement à gauche ou à droite de l'écran et l'aperçu caméra du côté opposé ; les deux réglages sont conservés localement. L'écran de scan reste en portrait sur téléphone. Les visites, les parcours, les scans réseau et les préférences restent sur l'appareil, sans synchronisation ni sauvegarde applicative, et sont supprimés lors de la désinstallation ou de l'effacement des données. La base n'est pas chiffrée par l'application ; évitez d'y saisir des informations sensibles avant la mise en place des protections adaptées.
+
+## Tests et intégration continue
+
+En local :
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest
+.\gradlew.bat :app:connectedDebugAndroidTest
+```
+
+Les tests instrumentés demandent un appareil ou un émulateur API 36 connecté.
+
+Le workflow GitHub Actions [`.github/workflows/android.yml`](.github/workflows/android.yml) se lance à chaque push sur `main` et `feature/**`, à chaque pull request vers `main`, et à la main depuis l'onglet Actions :
+
+1. **Tests unitaires, lint et APK** : `testDebugUnitTest`, `lintDebug` (non bloquant pour l'instant, rapport publié) et `assembleDebug`. L'APK debug est téléchargeable dans les artefacts pendant 14 jours.
+2. **Tests instrumentés** : `connectedDebugAndroidTest` sur un émulateur API 36 sans caméra. Aucun test ne lit le vrai modem : les écrans utilisent la source simulée et le parcours complet écrit ses mesures directement en base.
+3. **Release** : un tag `v*` (par exemple `v0.2.0`) publie l'APK debug dans une pré-release GitHub, après la réussite des deux étapes précédentes.
+
+Les rapports de tests (HTML et XML) sont joints à chaque exécution, même en cas d'échec. Les tests ARCore, qui demandent un vrai téléphone et des déplacements, ne font pas partie de la CI : `MapScanScreenTest` utilise `SimulatedPositionSource`, et le parcours complet tourne sur un émulateur sans ARCore, donc sans carte.
