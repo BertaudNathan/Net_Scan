@@ -9,6 +9,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -23,16 +24,23 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
 import com.example.MobileM2.Net_Scan.data.AppDatabase
 import com.example.MobileM2.Net_Scan.data.RoomNetScanRepository
+import com.example.MobileM2.Net_Scan.data.RoomRecordingRepository
 import com.example.MobileM2.Net_Scan.data.RoomVisitRepository
+import com.example.MobileM2.Net_Scan.data.position.SimulatedPositionSource
 import com.example.MobileM2.Net_Scan.data.signal.SimulatedSignalSource
+import com.example.MobileM2.Net_Scan.domain.PositionSource
+import com.example.MobileM2.Net_Scan.domain.PositionState
+import com.example.MobileM2.Net_Scan.domain.PositioningUnavailable
 import com.example.MobileM2.Net_Scan.domain.SignalAvailability
 import com.example.MobileM2.Net_Scan.ui.mapscan.MapScanScreen
 import com.example.MobileM2.Net_Scan.ui.mapscan.MapScanViewModel
 import com.example.MobileM2.Net_Scan.ui.theme.NetScanTheme
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -66,12 +74,17 @@ class MapScanScreenTest {
 
     @After fun tearDown() { db.close() }
 
-    private fun showScreen(source: SimulatedSignalSource = SimulatedSignalSource()) {
+    private fun showScreen(
+        source: SimulatedSignalSource = SimulatedSignalSource(),
+        positions: PositionSource = SimulatedPositionSource(startupMillis = 300),
+    ) {
         val viewModel = MapScanViewModel(
-            visitId,
-            RoomVisitRepository(db.visitDao()),
-            RoomNetScanRepository(db.netScanDao()),
-            source,
+            visitId = visitId,
+            visitRepository = RoomVisitRepository(db.visitDao()),
+            netScanRepository = RoomNetScanRepository(db.netScanDao()),
+            recordingRepository = RoomRecordingRepository(db.recordingDao(), db.netScanDao()),
+            signalSource = source,
+            positionSource = positions,
         )
         compose.setContent {
             NetScanTheme {
@@ -85,11 +98,21 @@ class MapScanScreenTest {
         compose.onAllNodesWithText(value).fetchSemanticsNodes().isNotEmpty()
     }
 
+    /** Début du texte, avant le premier argument, d'une ressource à paramètres. */
+    private fun prefix(id: Int) = text(id, "").substringBefore(",").trim()
+
+    private fun waitForDescription(start: String, timeout: Long = 10_000) {
+        val matcher = SemanticsMatcher("description starting with $start") { node ->
+            node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty().any { it.startsWith(start) }
+        }
+        compose.waitUntil(timeout) { compose.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty() }
+    }
+
     @Test fun headerShowsBuildingOperatorAndSimulatedData() {
         showScreen()
         waitForText(text(R.string.operator_with_technology, "Simulation", text(R.string.technology_4g)))
         compose.onNodeWithText(text(R.string.simulated_data)).assertIsDisplayed()
-        compose.onNodeWithText(text(R.string.map_placeholder_title)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.map_empty_title)).assertIsDisplayed()
         compose.onNodeWithContentDescription(text(R.string.map_scan_close))
             .assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
     }
@@ -128,6 +151,15 @@ class MapScanScreenTest {
         val saved = runBlocking { db.netScanDao().observeForVisit(visitId).first() }.single()
         assertEquals(20, saved.durationSeconds)
         assertEquals("MEDIUM", saved.level)
+        // Le scan a démarré l'enregistrement : il est placé sur la carte de ce parcours.
+        assertNotNull(saved.recordingId)
+        assertNotNull(saved.mapX)
+        val placed = text(
+            R.string.map_measurements_detail,
+            context.resources.getQuantityString(R.plurals.map_measurements, 1, 1),
+            text(R.string.map_level_count, text(R.string.level_medium), 1),
+        )
+        waitForDescription(text(R.string.map_description, placed))
 
         compose.onNodeWithText(text(R.string.close)).performClick()
         compose.onNodeWithText(text(R.string.net_scan_start)).assertIsDisplayed()
@@ -154,7 +186,7 @@ class MapScanScreenTest {
         showScreen()
         compose.onNodeWithContentDescription(text(R.string.record_start)).performClick()
         compose.onNodeWithContentDescription(text(R.string.record_stop)).assertIsDisplayed()
-        compose.onNodeWithText(text(R.string.map_placeholder_recording)).assertIsDisplayed()
+        waitForDescription(prefix(R.string.map_description))
         // N'importe quelle durée au-delà de 0:00 : sous charge, la seconde exacte peut être manquée.
         val prefix = text(R.string.recording_indicator_description, "")
         val counting = SemanticsMatcher("recording time above zero") { node ->
@@ -164,6 +196,21 @@ class MapScanScreenTest {
         compose.waitUntil(10_000) { compose.onAllNodes(counting).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription(text(R.string.record_stop)).performClick()
         compose.onNodeWithContentDescription(text(R.string.record_start)).assertIsDisplayed()
+        // Le parcours sauvegardé reste affiché.
+        val lastRecording = text(R.string.map_last_recording, "").trim()
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(lastRecording, substring = true)).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    @Test fun unavailablePositioningIsExplainedAndScansStayPossible() {
+        val unsupported = object : PositionSource {
+            override val isSimulated = false
+            override val position = flowOf<PositionState>(PositionState.Unavailable(PositioningUnavailable.UNSUPPORTED_DEVICE))
+        }
+        showScreen(positions = unsupported)
+        waitForText(text(R.string.mapping_unavailable_title))
+        compose.onNodeWithText(text(R.string.net_scan_start)).assertIsDisplayed()
     }
 
     @Test fun leavingWhileRecordingAsksForConfirmation() {

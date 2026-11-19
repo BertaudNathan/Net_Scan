@@ -17,7 +17,7 @@ lifecycle = "2.11.0"
 room = "2.8.5"
 ksp = "2.3.12"
 coroutines = "1.10.2"
-camerax = "1.6.2"
+arcore = "1.57.0"
 testRules = "1.7.0"
 
 [libraries]
@@ -46,10 +46,7 @@ androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lif
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
-androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "camerax" }
-androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
-androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
-androidx-camera-compose = { group = "androidx.camera", name = "camera-compose", version.ref = "camerax" }
+arcore = { group = "com.google.ar", name = "core", version.ref = "arcore" }
 androidx-test-rules = { group = "androidx.test", name = "rules", version.ref = "testRules" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 

@@ -20,6 +20,9 @@ class RoomNetScanRepository(private val dao: NetScanDao) : NetScanRepository {
                 sampleCount = scan.summary.sampleCount,
                 band = scan.summary.band,
                 cellId = scan.summary.cellId,
+                recordingId = scan.recordingId,
+                mapX = scan.position?.x,
+                mapZ = scan.position?.z,
             ),
         )
     }

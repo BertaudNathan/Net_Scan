@@ -4,16 +4,30 @@ Prototype Android de diagnostic réseau. La liste et le formulaire permettent de
 
 Toucher une visite ouvre son écran de scan :
 
-- en haut, un petit aperçu de la caméra arrière (aucune image n'est enregistrée), le nom du bâtiment et l'opérateur de la SIM données avec sa technologie (4G, 5G…) ;
-- au centre, l'emplacement de la future carte ARCore, encore un simple espace réservé ;
-- en bas, le bouton **Scan réseau** : il mesure le réseau mobile réel pendant un minuteur (20, 30 ou 60 s) ou en chrono libre (20 s minimum). Il affiche le niveau INEXISTANT, FAIBLE, MOYEN ou HAUT sur un filtre coloré, puis enregistre la médiane dans la visite. Les valeurs brutes (RSRP, SINR, bande, cellule) sont repliées dans « Détails techniques » ;
-- en bas à droite, le bouton d'enregistrement (rond rouge pour démarrer, carré noir pour arrêter). Il est indépendant des scans réseau. Tant qu'ARCore n'est pas intégré, il ne mémorise pas encore le parcours.
+- en haut, un petit aperçu de ce que filme ARCore (aucune image n'est enregistrée), le nom du bâtiment et l'opérateur de la SIM données avec sa technologie (4G, 5G…) ;
+- au centre, la carte du parcours vue de dessus, avec la heatmap du réseau (voir plus bas) ;
+- en bas, le bouton **Scan réseau** : il mesure le réseau mobile réel pendant un minuteur (20, 30 ou 60 s) ou en chrono libre (20 s minimum). Il affiche le niveau INEXISTANT, FAIBLE, MOYEN ou HAUT sur un filtre coloré, puis enregistre la médiane dans la visite. Les valeurs brutes (RSRP, SINR, bande, cellule) sont repliées dans « Détails techniques ». Lancer un scan démarre l'enregistrement s'il est arrêté, pour que la mesure soit placée sur la carte ;
+- en bas à droite, le bouton d'enregistrement (rond rouge pour démarrer, carré noir pour arrêter). Il enregistre le parcours suivi par ARCore.
+
+### Carte et heatmap (paliers 1 et 2)
+
+ARCore suit le téléphone hors ligne, sans Cloud Anchors ni Geospatial : seules des positions et des points de la scène sont enregistrés, jamais d'image. La carte est une grille de cases de 50 cm vue de dessus, la direction de départ vers le haut :
+
+- deux fois par seconde, la profondeur ARCore (ou, à défaut, son nuage de points) donne des points de ce que filme la caméra, jusqu'à 4 m. La profondeur est projetée avec les paramètres de l'image ARCore (image CPU ou texture affichée) dont le cadrage correspond au sien. Le sol vient du plus bas des plans horizontaux détectés, ou à défaut de la hauteur la plus fréquente des points bas ; tant qu'il est inconnu, rien n'est cartographié. Les cases entre le téléphone et un point vu sont libres (avec une tolérance sur la hauteur du sol qui grandit avec la distance) ; une case devient mur ou obstacle quand ce qu'on y voit, entre 0,3 et 2 m du sol, s'élève d'au moins 40 cm, ce qui écarte les plateaux de table. Chaque case cumule ces indices : un reflet isolé ne crée pas de mur, et revoir le sol à travers une case la libère ;
+- la zone accessible est le sol vu libre plus la trajectoire élargie de 50 cm, moins les obstacles ; une case par laquelle on est passé n'est jamais un obstacle. Rien n'est estimé en dehors ;
+- chaque scan réseau est placé à la position médiane du téléphone pendant la mesure (restez immobile) ;
+- une case mesurée prend la couleur pleine de son niveau ; les autres sont estimées par pondération inverse au carré de la distance (IDW), avec une distance de parcours dans la zone, pas à vol d'oiseau : une estimation ne traverse pas un mur. Elles sont d'autant plus pâles qu'elles sont loin d'une mesure ;
+- au-delà de 6 m de parcours de toute mesure, la case reste hachurée (inconnue). Les murs et obstacles sont en plein foncé.
+
+Chaque enregistrement est un parcours à part, avec son propre repère ARCore : au repos, l'écran montre le dernier parcours sauvegardé ; un nouvel enregistrement commence une nouvelle carte. Une perte de suivi (mouvement trop rapide, manque de lumière, mur uni, caméra tournée vers le sol) ou un saut de plus d'1,5 m entre deux positions coupe la trajectoire en tronçons qui ne sont pas reliés entre eux. Le téléphone vibre à chaque perte pendant un enregistrement. ARCore repart alors souvent d'une origine décalée : la nouvelle portion est mise en attente (bandeau « Recalage… »), le temps d'en voir quelques murs, puis recalée sur la carte déjà tracée en cherchant le petit déplacement (jusqu'à 1,5 m et 12°) qui superpose le mieux ses murs aux anciens sans faire tomber de mur sur du sol déjà vu libre. Les grandes corrections sont pénalisées : dans un couloir uniforme, seul le décalage latéral est corrigé. Sans murs communs (pièce nouvelle), la portion est ajoutée telle quelle après 10 s. La géolocalisation n'aiderait pas : à l'intérieur, son erreur (5 à 30 m) dépasse de loin la dérive d'ARCore. La légende de la carte s'ouvre avec le bouton « i ».
+
+ARCore est facultatif : sur un téléphone non compatible, ou sans les Services Google Play pour la RA, les scans réseau restent possibles mais ne sont pas placés sur la carte. Limites connues : la dérive d'ARCore sur les longues distances n'est pas corrigée, les parcours d'une même visite ne se superposent pas, la carte ne sait pas ce qu'est un obstacle (béton, rayonnage, chambre froide : annotations à venir), et les vitres, l'inox ou l'obscurité peuvent créer des trous ou de faux obstacles.
 
 Les seuils suivent la synthèse du projet : RSRP > −80 dBm ou SINR > 13 dB pour HAUT, < −100 dBm ou < 0 dB pour FAIBLE, et le pire des deux indicateurs est retenu. « Pas de service » donne INEXISTANT.
 
-Le scan réseau demande la localisation précise (Android l'exige pour lire les informations de cellule) et l'accès au téléphone. L'aperçu demande la caméra. Une source de mesures simulée (`SimulatedSignalSource`) sert aux tests automatiques ; quand elle est utilisée, l'écran affiche « Données simulées ».
+Le scan réseau demande la localisation précise (Android l'exige pour lire les informations de cellule) et l'accès au téléphone. ARCore demande la caméra, et lit le gyroscope et l'accéléromètre à haute fréquence (`HIGH_SAMPLING_RATE_SENSORS`, accordée sans demande à l'utilisateur) : sans elle, Android 12+ bride ces capteurs et le suivi décroche. Des sources simulées de mesures (`SimulatedSignalSource`) et de positions (`SimulatedPositionSource`) servent aux tests automatiques ; quand l'une d'elles est utilisée, l'écran affiche « Données simulées ».
 
-Le rapport PDF, la carte et la heatmap ne sont pas encore disponibles.
+Le rapport PDF, les annotations d'obstacles et le positionnement manuel sur un plan ne sont pas encore disponibles.
 
 ## Lancer le projet
 
@@ -23,4 +37,4 @@ Ouvrir le projet dans Android Studio avec le SDK Android configuré, puis lancer
 .\gradlew.bat :app:assembleDebug
 ```
 
-Le thème peut être réglé sur clair, sombre ou automatique selon le système dans les préférences ; ce choix est conservé localement. L'écran de scan reste en portrait sur téléphone. Les visites, les scans réseau et les préférences restent sur l'appareil, sans synchronisation ni sauvegarde applicative, et sont supprimés lors de la désinstallation ou de l'effacement des données. La base n'est pas chiffrée par l'application ; évitez d'y saisir des informations sensibles avant la mise en place des protections adaptées. Le mode gaucher reste à implémenter.
+Le thème peut être réglé sur clair, sombre ou automatique selon le système dans les préférences ; ce choix est conservé localement. L'écran de scan reste en portrait sur téléphone. Les visites, les parcours, les scans réseau et les préférences restent sur l'appareil, sans synchronisation ni sauvegarde applicative, et sont supprimés lors de la désinstallation ou de l'effacement des données. La base n'est pas chiffrée par l'application ; évitez d'y saisir des informations sensibles avant la mise en place des protections adaptées. Le mode gaucher reste à implémenter.

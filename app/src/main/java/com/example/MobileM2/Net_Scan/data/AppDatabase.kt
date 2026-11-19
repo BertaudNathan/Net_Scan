@@ -37,6 +37,96 @@ interface VisitDao {
     suspend fun insert(visit: VisitEntity): Long
 }
 
+/** Enregistrement d'un parcours : seulement des positions, aucune image. */
+@Entity(
+    tableName = "recordings",
+    foreignKeys = [
+        ForeignKey(
+            entity = VisitEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["visitId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("visitId")],
+)
+data class RecordingEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val visitId: Long,
+    val startedAt: Long,
+    /** Null si l'écran a été quitté sans arrêter l'enregistrement. */
+    val endedAt: Long?,
+)
+
+/** Point de trajectoire, en mètres dans le repère ARCore de son enregistrement. */
+@Entity(
+    tableName = "recording_points",
+    foreignKeys = [
+        ForeignKey(
+            entity = RecordingEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["recordingId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("recordingId")],
+)
+data class RecordingPointEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val recordingId: Long,
+    val segment: Int,
+    val x: Float,
+    val z: Float,
+)
+
+/** Case de la carte d'occupation d'un enregistrement, avec son score (log-odds). */
+@Entity(
+    tableName = "recording_cells",
+    primaryKeys = ["recordingId", "cellCol", "cellRow"],
+    foreignKeys = [
+        ForeignKey(
+            entity = RecordingEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["recordingId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+)
+data class RecordingCellEntity(
+    val recordingId: Long,
+    val cellCol: Int,
+    val cellRow: Int,
+    val logOdds: Float,
+)
+
+@Dao
+interface RecordingDao {
+    @Insert
+    suspend fun insert(recording: RecordingEntity): Long
+
+    @Insert
+    suspend fun insertPoints(points: List<RecordingPointEntity>)
+
+    @Query("UPDATE recordings SET endedAt = :endedAt WHERE id = :id")
+    suspend fun finish(id: Long, endedAt: Long)
+
+    @Query(
+        "SELECT * FROM recordings WHERE visitId = :visitId AND EXISTS " +
+            "(SELECT 1 FROM recording_points WHERE recording_points.recordingId = recordings.id) " +
+            "ORDER BY startedAt DESC, id DESC LIMIT 1",
+    )
+    fun observeLatestWithPoints(visitId: Long): Flow<RecordingEntity?>
+
+    @Query("SELECT * FROM recording_points WHERE recordingId = :recordingId ORDER BY id")
+    fun observePoints(recordingId: Long): Flow<List<RecordingPointEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveCells(cells: List<RecordingCellEntity>)
+
+    @Query("SELECT * FROM recording_cells WHERE recordingId = :recordingId")
+    fun observeCells(recordingId: Long): Flow<List<RecordingCellEntity>>
+}
+
 /** Scan réseau terminé. Les énumérations sont stockées par leur nom. */
 @Entity(
     tableName = "net_scans",
@@ -47,8 +137,14 @@ interface VisitDao {
             childColumns = ["visitId"],
             onDelete = ForeignKey.CASCADE,
         ),
+        ForeignKey(
+            entity = RecordingEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["recordingId"],
+            onDelete = ForeignKey.SET_NULL,
+        ),
     ],
-    indices = [Index("visitId")],
+    indices = [Index("visitId"), Index("recordingId")],
 )
 data class NetScanEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -65,6 +161,10 @@ data class NetScanEntity(
     val sampleCount: Int,
     val band: Int?,
     val cellId: Long?,
+    val recordingId: Long? = null,
+    /** Position sur la carte de l'enregistrement, absente si le suivi n'en a donné aucune. */
+    val mapX: Float? = null,
+    val mapZ: Float? = null,
 )
 
 @Dao
@@ -74,6 +174,12 @@ interface NetScanDao {
 
     @Query("SELECT * FROM net_scans WHERE visitId = :visitId ORDER BY startedAt DESC, id DESC")
     fun observeForVisit(visitId: Long): Flow<List<NetScanEntity>>
+
+    @Query(
+        "SELECT * FROM net_scans WHERE recordingId = :recordingId AND mapX IS NOT NULL AND mapZ IS NOT NULL " +
+            "ORDER BY startedAt, id",
+    )
+    fun observePlaced(recordingId: Long): Flow<List<NetScanEntity>>
 }
 
 @Entity(tableName = "app_preferences")
@@ -94,17 +200,27 @@ interface PreferencesDao {
 /**
  * Version 1 : visites (table `scans`). Version 2 : deux branches ont chacune produit une version 2
  * différente (préférences d'un côté, visites renommées et scans réseau de l'autre). La version 3
- * réunit les deux ; sa migration accepte l'une ou l'autre des versions 2.
+ * réunit les deux ; sa migration accepte l'une ou l'autre des versions 2. Version 4 : enregistrements
+ * de parcours ARCore et position des scans réseau sur leur carte. Version 5 : carte d'occupation
+ * (sol vu, murs) de chaque enregistrement.
  */
 @Database(
-    entities = [VisitEntity::class, NetScanEntity::class, PreferencesEntity::class],
-    version = 3,
+    entities = [
+        VisitEntity::class,
+        NetScanEntity::class,
+        PreferencesEntity::class,
+        RecordingEntity::class,
+        RecordingPointEntity::class,
+        RecordingCellEntity::class,
+    ],
+    version = 5,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun visitDao(): VisitDao
     abstract fun netScanDao(): NetScanDao
     abstract fun preferencesDao(): PreferencesDao
+    abstract fun recordingDao(): RecordingDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -122,10 +238,49 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `recordings` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`visitId` INTEGER NOT NULL, `startedAt` INTEGER NOT NULL, `endedAt` INTEGER, " +
+                        "FOREIGN KEY(`visitId`) REFERENCES `visits`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_recordings_visitId` ON `recordings` (`visitId`)")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `recording_points` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`recordingId` INTEGER NOT NULL, `segment` INTEGER NOT NULL, `x` REAL NOT NULL, `z` REAL NOT NULL, " +
+                        "FOREIGN KEY(`recordingId`) REFERENCES `recordings`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_recording_points_recordingId` ON `recording_points` (`recordingId`)",
+                )
+                // SQLite accepte une clé étrangère ajoutée par ALTER TABLE tant que sa valeur par défaut est NULL.
+                db.execSQL(
+                    "ALTER TABLE `net_scans` ADD COLUMN `recordingId` INTEGER " +
+                        "REFERENCES `recordings`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL",
+                )
+                db.execSQL("ALTER TABLE `net_scans` ADD COLUMN `mapX` REAL")
+                db.execSQL("ALTER TABLE `net_scans` ADD COLUMN `mapZ` REAL")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_net_scans_recordingId` ON `net_scans` (`recordingId`)")
+            }
+        }
+
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `recording_cells` (`recordingId` INTEGER NOT NULL, " +
+                        "`cellCol` INTEGER NOT NULL, `cellRow` INTEGER NOT NULL, `logOdds` REAL NOT NULL, " +
+                        "PRIMARY KEY(`recordingId`, `cellCol`, `cellRow`), FOREIGN KEY(`recordingId`) " +
+                        "REFERENCES `recordings`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+            }
+        }
+
+        val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 
         private const val CREATE_PREFERENCES =
             "CREATE TABLE IF NOT EXISTS `app_preferences` (`id` INTEGER NOT NULL, `theme` TEXT NOT NULL, PRIMARY KEY(`id`))"
+        /** Table des scans réseau telle qu'en version 3 ; la version 4 y ajoute des colonnes. */
         private const val CREATE_NET_SCANS =
             "CREATE TABLE IF NOT EXISTS `net_scans` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
                 "`visitId` INTEGER NOT NULL, `startedAt` INTEGER NOT NULL, `durationSeconds` INTEGER NOT NULL, " +

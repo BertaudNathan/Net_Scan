@@ -18,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -29,13 +30,16 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.MobileM2.Net_Scan.data.AppDatabase
 import com.example.MobileM2.Net_Scan.data.RoomNetScanRepository
+import com.example.MobileM2.Net_Scan.data.RoomRecordingRepository
 import com.example.MobileM2.Net_Scan.data.RoomThemeRepository
 import com.example.MobileM2.Net_Scan.data.RoomVisitRepository
+import com.example.MobileM2.Net_Scan.data.position.ArCoreTracker
 import com.example.MobileM2.Net_Scan.data.signal.TelephonySignalSource
 import com.example.MobileM2.Net_Scan.domain.ThemeMode
 import com.example.MobileM2.Net_Scan.ui.PreferencesScreen
 import com.example.MobileM2.Net_Scan.ui.PreferencesState
 import com.example.MobileM2.Net_Scan.ui.PreferencesViewModel
+import com.example.MobileM2.Net_Scan.ui.mapscan.ArCorePreview
 import com.example.MobileM2.Net_Scan.ui.mapscan.MapScanScreen
 import com.example.MobileM2.Net_Scan.ui.mapscan.MapScanViewModel
 import com.example.MobileM2.Net_Scan.ui.theme.Design
@@ -121,6 +125,10 @@ class MainActivity : ComponentActivity() {
                                 arguments = listOf(navArgument(VISIT_ID) { type = NavType.LongType }),
                             ) { entry ->
                                 val visitId = entry.arguments?.getLong(VISIT_ID) ?: 0L
+                                // La session ARCore vit aussi longtemps que l'écran de la visite.
+                                val tracker = viewModel<ArCoreHolder>(
+                                    factory = viewModelFactory { initializer { ArCoreHolder(ArCoreTracker()) } },
+                                ).tracker
                                 val mapScanViewModel: MapScanViewModel = viewModel(
                                     factory = viewModelFactory {
                                         initializer {
@@ -128,7 +136,12 @@ class MainActivity : ComponentActivity() {
                                                 visitId = visitId,
                                                 visitRepository = RoomVisitRepository(database.visitDao()),
                                                 netScanRepository = RoomNetScanRepository(database.netScanDao()),
+                                                recordingRepository = RoomRecordingRepository(
+                                                    database.recordingDao(),
+                                                    database.netScanDao(),
+                                                ),
                                                 signalSource = TelephonySignalSource(applicationContext),
+                                                positionSource = tracker,
                                             )
                                         }
                                     },
@@ -136,6 +149,7 @@ class MainActivity : ComponentActivity() {
                                 MapScanScreen(
                                     viewModel = mapScanViewModel,
                                     onClose = { navController.popBackStack() },
+                                    cameraPreview = { modifier -> ArCorePreview(tracker, modifier) },
                                 )
                             }
                         }
@@ -145,3 +159,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+/** Garde la session ARCore d'une visite et la ferme quand l'écran est quitté pour de bon. */
+private class ArCoreHolder(val tracker: ArCoreTracker) : ViewModel(tracker)

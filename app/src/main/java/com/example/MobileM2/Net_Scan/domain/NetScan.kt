@@ -24,7 +24,10 @@ data class NetScanSummary(
     val cellId: Long?,
 )
 
-/** Scan réseau terminé, rattaché à une visite. */
+/**
+ * Scan réseau terminé, rattaché à une visite. [position] le place sur la carte de l'enregistrement
+ * [recordingId] ; elle est absente si le suivi ARCore n'a donné aucune position pendant le scan.
+ */
 data class NetScan(
     val visitId: Long,
     val startedAt: Long,
@@ -32,6 +35,8 @@ data class NetScan(
     val mode: NetScanMode,
     val operatorName: String?,
     val summary: NetScanSummary,
+    val recordingId: Long? = null,
+    val position: FloorPoint? = null,
 )
 
 interface NetScanRepository {
