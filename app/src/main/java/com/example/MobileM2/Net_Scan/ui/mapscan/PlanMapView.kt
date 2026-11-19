@@ -191,7 +191,14 @@ internal fun PlanMapView(
 /** Heatmap en image : un pixel par case de la grille, transparent hors de la zone estimée. */
 private class HeatImage(val image: ImageBitmap, val cols: Int, val rows: Int)
 
-private fun heatImage(map: FloorMap, plan: FloorPlan): HeatImage? {
+private fun heatImage(map: FloorMap, plan: FloorPlan): HeatImage? =
+    planHeatBitmap(map, plan)?.let { HeatImage(it.asImageBitmap(), it.width, it.height) }
+
+/**
+ * Heatmap du plan, un pixel par case de la grille (le pixel 0,0 est la case du coin haut gauche),
+ * transparente hors de la zone estimée. Partagée par l'écran et le rapport PDF.
+ */
+internal fun planHeatBitmap(map: FloorMap, plan: FloorPlan): Bitmap? {
     val scale = plan.metersPerPixel ?: return null
     val cellSize = map.heatmap.grid.cellSize
     val cols = ceil(plan.widthPx * scale / cellSize).toInt().coerceAtLeast(1)
@@ -202,7 +209,7 @@ private fun heatImage(map: FloorMap, plan: FloorPlan): HeatImage? {
         val alpha = if (value.measured) MEASURED_ALPHA else 0.15f + 0.35f * value.confidence
         bitmap[cell.col, cell.row] = levelColors(value.level).container.copy(alpha = alpha).toArgb()
     }
-    return HeatImage(bitmap.asImageBitmap(), cols, rows)
+    return bitmap
 }
 
 private fun planPointOf(point: FloorPoint, plan: FloorPlan, metersPerPixel: Float) =

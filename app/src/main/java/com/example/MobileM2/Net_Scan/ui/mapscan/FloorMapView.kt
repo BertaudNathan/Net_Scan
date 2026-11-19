@@ -169,6 +169,23 @@ internal data class MapTransform(val scale: Float, val originX: Float, val origi
         const val MIN_EXTENT_METERS = 8f
 
         fun fit(map: FloorMap, width: Float, height: Float, left: Float, top: Float, right: Float, bottom: Float): MapTransform {
+            val bounds = MapBounds.of(map)
+            val availableWidth = max(1f, width - left - right)
+            val availableHeight = max(1f, height - top - bottom)
+            val scale = min(availableWidth / bounds.extentX, availableHeight / bounds.extentZ)
+            return MapTransform(
+                scale = scale,
+                originX = left + availableWidth / 2 - bounds.centerX * scale,
+                originY = top + availableHeight / 2 - bounds.centerZ * scale,
+            )
+        }
+    }
+}
+
+/** Étendue affichée de la carte, en mètres, au moins [MapTransform.MIN_EXTENT_METERS] de côté. */
+internal data class MapBounds(val centerX: Float, val centerZ: Float, val extentX: Float, val extentZ: Float) {
+    companion object {
+        fun of(map: FloorMap): MapBounds {
             val cellSize = map.heatmap.grid.cellSize
             var minX = Float.MAX_VALUE
             var minZ = Float.MAX_VALUE
@@ -186,17 +203,11 @@ internal data class MapTransform(val scale: Float, val originX: Float, val origi
                 maxX = 0f
                 maxZ = 0f
             }
-            val centerX = (minX + maxX) / 2
-            val centerZ = (minZ + maxZ) / 2
-            val extentX = max(maxX - minX, MIN_EXTENT_METERS)
-            val extentZ = max(maxZ - minZ, MIN_EXTENT_METERS)
-            val availableWidth = max(1f, width - left - right)
-            val availableHeight = max(1f, height - top - bottom)
-            val scale = min(availableWidth / extentX, availableHeight / extentZ)
-            return MapTransform(
-                scale = scale,
-                originX = left + availableWidth / 2 - centerX * scale,
-                originY = top + availableHeight / 2 - centerZ * scale,
+            return MapBounds(
+                centerX = (minX + maxX) / 2,
+                centerZ = (minZ + maxZ) / 2,
+                extentX = max(maxX - minX, MapTransform.MIN_EXTENT_METERS),
+                extentZ = max(maxZ - minZ, MapTransform.MIN_EXTENT_METERS),
             )
         }
     }

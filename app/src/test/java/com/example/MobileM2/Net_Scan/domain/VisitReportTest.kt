@@ -1,21 +1,92 @@
 package com.example.MobileM2.Net_Scan.domain
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VisitReportTest {
     private val visit = Visit(3, "Entrepôt Nord", "Acme", "1 rue de la Paix", 100)
+    private val plan = FloorPlan(3, "plan.png", widthPx = 200, heightPx = 100, metersPerPixel = 0.1f)
 
-    private fun scan(id: Long, startedAt: Long, level: SignalLevel, operator: String? = "Orange") = NetScan(
+    private fun scan(
+        id: Long,
+        startedAt: Long,
+        level: SignalLevel,
+        operator: String? = "Orange",
+        planPosition: PlanPoint? = null,
+    ) = NetScan(
         visitId = 3,
         startedAt = startedAt,
         durationSeconds = 30,
         mode = NetScanMode.Timer(30),
         operatorName = operator,
         summary = NetScanSummary(level, NetworkTechnology.LTE, -90.0, 5.0, 12, 3, 42L),
+        planPosition = planPosition,
         id = id,
     )
+
+    @Test fun withoutPlanNothingIsPlaced() {
+        val report = buildVisitReport(visit, listOf(scan(1, 1, SignalLevel.HIGH, planPosition = PlanPoint(0.5f, 0.5f))), 999)
+        assertTrue(report.placedPoints.isEmpty())
+        assertNull(report.planMap)
+    }
+
+    @Test fun pointsOnThePlanKeepTheirNumberAndFeedTheHeatmap() {
+        val report = buildVisitReport(
+            visit,
+            listOf(
+                scan(1, 1, SignalLevel.HIGH, planPosition = PlanPoint(0.25f, 0.5f)),
+                scan(2, 2, SignalLevel.LOW),
+                scan(3, 3, SignalLevel.NONE, planPosition = PlanPoint(0.75f, 0.5f)),
+                scan(4, 4, SignalLevel.LOW, planPosition = PlanPoint(1.5f, 0.5f)),
+            ),
+            999,
+            plan,
+        )
+        assertEquals(listOf("P1", "P3"), report.placedPoints.map { it.label })
+        assertEquals(listOf("P2", "P4"), report.unplacedPoints.map { it.label })
+        val map = checkNotNull(report.planMap)
+        assertEquals(listOf(SignalLevel.HIGH, SignalLevel.NONE), map.measurements.map { it.level })
+        assertTrue(map.heatmap.values.values.any { it.measured && it.level == SignalLevel.HIGH })
+        assertTrue(map.heatmap.values.values.any { !it.measured })
+    }
+
+    @Test fun scansOfTheLatestRecordingArePlacedOnItsMap() {
+        val recording = SavedRecording(9, 0, listOf(listOf(FloorPoint(0f, 0f), FloorPoint(4f, 0f))), emptyList())
+        val report = buildVisitReport(
+            visit,
+            listOf(
+                scan(1, 1, SignalLevel.HIGH).copy(recordingId = 9, position = FloorPoint(0f, 0f)),
+                scan(2, 2, SignalLevel.LOW).copy(recordingId = 8, position = FloorPoint(1f, 0f)),
+                scan(3, 3, SignalLevel.NONE).copy(recordingId = 9),
+                scan(4, 4, SignalLevel.LOW).copy(recordingId = 9, position = FloorPoint(4f, 0f)),
+            ),
+            999,
+            recording = recording,
+        )
+        assertEquals(listOf("P1", "P4"), report.placedPoints.map { it.label })
+        assertEquals(listOf("P2", "P3"), report.unplacedPoints.map { it.label })
+        val map = checkNotNull(report.recordingMap)
+        assertEquals(recording.segments, map.segments)
+        assertEquals(listOf(SignalLevel.HIGH, SignalLevel.LOW), map.measurements.map { it.level })
+        assertTrue(map.heatmap.values.values.any { !it.measured })
+    }
+
+    @Test fun withoutRecordingThereIsNoArCoreMap() {
+        assertNull(buildVisitReport(visit, listOf(scan(1, 1, SignalLevel.HIGH)), 999).recordingMap)
+    }
+
+    @Test fun aPlanWithoutScaleHasNoHeatmapButKeepsItsPoints() {
+        val report = buildVisitReport(
+            visit,
+            listOf(scan(1, 1, SignalLevel.HIGH, planPosition = PlanPoint(0.5f, 0.5f))),
+            999,
+            plan.copy(metersPerPixel = null),
+        )
+        assertEquals(listOf("P1"), report.placedPoints.map { it.label })
+        assertNull(report.planMap)
+    }
 
     @Test fun pointsAreNumberedInChronologicalOrder() {
         val report = buildVisitReport(visit, listOf(scan(2, 200, SignalLevel.HIGH), scan(1, 100, SignalLevel.LOW)), 999)

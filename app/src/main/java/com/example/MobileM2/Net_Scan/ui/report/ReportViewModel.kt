@@ -2,7 +2,10 @@ package com.example.MobileM2.Net_Scan.ui.report
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.MobileM2.Net_Scan.domain.FloorPlanRepository
+import com.example.MobileM2.Net_Scan.domain.MappingMode
 import com.example.MobileM2.Net_Scan.domain.NetScanRepository
+import com.example.MobileM2.Net_Scan.domain.RecordingRepository
 import com.example.MobileM2.Net_Scan.domain.ReportGenerator
 import com.example.MobileM2.Net_Scan.domain.VisitReport
 import com.example.MobileM2.Net_Scan.domain.VisitRepository
@@ -40,6 +43,8 @@ class ReportViewModel(
     private val visitId: Long,
     private val visitRepository: VisitRepository,
     private val netScanRepository: NetScanRepository,
+    private val planRepository: FloorPlanRepository,
+    private val recordingRepository: RecordingRepository,
     private val generator: ReportGenerator,
     private val clock: () -> Long = System::currentTimeMillis,
     private val io: CoroutineDispatcher = Dispatchers.IO,
@@ -69,7 +74,13 @@ class ReportViewModel(
                 if (visit == null) {
                     ReportState.Missing
                 } else {
-                    val report = buildVisitReport(visit, netScanRepository.observeForVisit(visitId).first(), clock())
+                    val scans = netScanRepository.observeForVisit(visitId).first()
+                    // Une visite se cartographie d'une seule façon : plan importé ou parcours ARCore.
+                    val report = when (visit.mode) {
+                        MappingMode.MANUAL -> buildVisitReport(visit, scans, clock(), plan = planRepository.observePlan(visitId).first())
+                        MappingMode.ARCORE ->
+                            buildVisitReport(visit, scans, clock(), recording = recordingRepository.observeLatest(visitId).first())
+                    }
                     ReportState.Ready(report, generator.generate(report))
                 }
             } catch (error: CancellationException) {

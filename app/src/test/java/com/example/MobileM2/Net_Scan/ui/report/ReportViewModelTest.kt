@@ -1,11 +1,19 @@
 package com.example.MobileM2.Net_Scan.ui.report
 
+import com.example.MobileM2.Net_Scan.domain.FloorPlan
+import com.example.MobileM2.Net_Scan.domain.FloorPlanRepository
+import com.example.MobileM2.Net_Scan.domain.FloorPoint
+import com.example.MobileM2.Net_Scan.domain.GridCell
+import com.example.MobileM2.Net_Scan.domain.RecordingRepository
+import com.example.MobileM2.Net_Scan.domain.SavedRecording
+import com.example.MobileM2.Net_Scan.domain.TrackPoint
 import com.example.MobileM2.Net_Scan.domain.MappingMode
 import com.example.MobileM2.Net_Scan.domain.NetScan
 import com.example.MobileM2.Net_Scan.domain.NetScanMode
 import com.example.MobileM2.Net_Scan.domain.NetScanRepository
 import com.example.MobileM2.Net_Scan.domain.NetScanSummary
 import com.example.MobileM2.Net_Scan.domain.NetworkTechnology
+import com.example.MobileM2.Net_Scan.domain.PlanMeasurement
 import com.example.MobileM2.Net_Scan.domain.ReportGenerator
 import com.example.MobileM2.Net_Scan.domain.SignalLevel
 import com.example.MobileM2.Net_Scan.domain.Visit
@@ -29,6 +37,7 @@ import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 
@@ -37,6 +46,8 @@ class ReportViewModelTest {
     private val dispatcher = StandardTestDispatcher()
     private val visits = FakeVisitRepository()
     private val scans = FakeNetScanRepository()
+    private val plans = FakeFloorPlanRepository()
+    private val recordings = FakeRecordingRepository()
     private val generator = FakeReportGenerator()
 
     @Before fun setup() { Dispatchers.setMain(dispatcher) }
@@ -46,7 +57,26 @@ class ReportViewModelTest {
     }
 
     private fun TestScope.viewModel() =
-        ReportViewModel(VISIT_ID, visits, scans, generator, clock = { 5_000L }, io = dispatcher).also { runCurrent() }
+        ReportViewModel(VISIT_ID, visits, scans, plans, recordings, generator, clock = { 5_000L }, io = dispatcher)
+            .also { runCurrent() }
+
+    @Test fun aManualVisitIncludesItsImportedPlan() = runTest(dispatcher) {
+        visits.visit.value = visits.visit.value?.copy(mode = MappingMode.MANUAL)
+        val plan = FloorPlan(VISIT_ID, "plan.png", 200, 100, 0.1f)
+        plans.plan.value = plan
+        recordings.latest.value = RECORDING
+        val state = viewModel().state.value as ReportState.Ready
+        assertEquals(plan, state.report.plan)
+        assertNull(state.report.recording)
+    }
+
+    @Test fun anArCoreVisitIncludesItsLatestRecording() = runTest(dispatcher) {
+        plans.plan.value = FloorPlan(VISIT_ID, "plan.png", 200, 100, 0.1f)
+        recordings.latest.value = RECORDING
+        val state = viewModel().state.value as ReportState.Ready
+        assertEquals(RECORDING, state.report.recording)
+        assertNull(state.report.plan)
+    }
 
     @Test fun buildsTheReportFromTheVisitAndItsScans() = runTest(dispatcher) {
         scans.scans.value = listOf(scan(2, 200), scan(1, 100))
@@ -123,6 +153,23 @@ class ReportViewModelTest {
         override suspend fun save(scan: NetScan) = Unit
     }
 
+    private class FakeFloorPlanRepository : FloorPlanRepository {
+        val plan = MutableStateFlow<FloorPlan?>(null)
+        override fun observePlan(visitId: Long): Flow<FloorPlan?> = plan
+        override suspend fun savePlan(plan: FloorPlan) = Unit
+        override suspend fun setScale(visitId: Long, metersPerPixel: Float) = Unit
+        override fun observePlanMeasurements(visitId: Long): Flow<List<PlanMeasurement>> = MutableStateFlow(emptyList())
+    }
+
+    private class FakeRecordingRepository : RecordingRepository {
+        val latest = MutableStateFlow<SavedRecording?>(null)
+        override suspend fun start(visitId: Long, startedAt: Long) = 1L
+        override suspend fun addPoints(recordingId: Long, points: List<TrackPoint>) = Unit
+        override suspend fun finish(recordingId: Long, endedAt: Long) = Unit
+        override suspend fun saveCells(recordingId: Long, cells: Map<GridCell, Float>) = Unit
+        override fun observeLatest(visitId: Long): Flow<SavedRecording?> = latest
+    }
+
     private class FakeReportGenerator : ReportGenerator {
         val file: File = File.createTempFile("rapport", ".pdf").apply { writeBytes(PDF_BYTES) }
         val generated = mutableListOf<VisitReport>()
@@ -136,6 +183,7 @@ class ReportViewModelTest {
 
     private companion object {
         const val VISIT_ID = 7L
+        val RECORDING = SavedRecording(3, 0, listOf(listOf(FloorPoint(0f, 0f), FloorPoint(2f, 0f))), emptyList())
         val PDF_BYTES = "%PDF-1.4 test".toByteArray()
     }
 }

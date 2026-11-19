@@ -16,7 +16,41 @@ data class VisitReport(
     val visit: Visit,
     val points: List<ReportPoint>,
     val generatedAt: Long,
+    /** Plan importé en mode manuel ; null si la visite n'en a pas. */
+    val plan: FloorPlan? = null,
+    /** Dernier parcours ARCore de la visite, celui que montre l'écran ; null s'il n'y en a pas. */
+    val recording: SavedRecording? = null,
 ) {
+    /** Points placés sur [plan] ou, sans plan, sur la carte de [recording], avec leur numéro de rapport. */
+    val placedPoints: List<ReportPoint> = when {
+        plan != null -> points.filter { point -> point.scan.planPosition?.let(plan::contains) == true }
+        recording != null -> points.filter { it.scan.recordingId == recording.id && it.scan.position != null }
+        else -> emptyList()
+    }
+
+    /** Points à reporter à la main : sans carte, tous ; sinon, ceux qui n'y sont pas placés. */
+    val unplacedPoints: List<ReportPoint> = points - placedPoints.toSet()
+
+    /**
+     * Carte du parcours ARCore, comme à l'écran : zone parcourue, obstacles, trajet et heatmap
+     * construite à partir des seuls scans placés. Null sans parcours ou avec un plan importé.
+     */
+    val recordingMap: FloorMap? by lazy {
+        if (plan != null || recording == null) return@lazy null
+        FloorMap.build(
+            segments = recording.segments,
+            measurements = placedPoints.map { MapMeasurement(checkNotNull(it.scan.position), it.scan.summary.level) },
+            occupancy = OccupancyMap(initial = recording.cells).snapshot(),
+        )
+    }
+
+    /** Heatmap du plan, comme à l'écran ; null sans plan ou tant que son échelle n'est pas réglée. */
+    val planMap: FloorMap? by lazy {
+        plan?.let { floorPlan ->
+            FloorMap.onPlan(floorPlan, placedPoints.map { PlanMeasurement(checkNotNull(it.scan.planPosition), it.scan.summary.level) })
+        }
+    }
+
     /** Nombre de points par niveau, du pire au meilleur, niveaux absents compris (à zéro). */
     val levelCounts: Map<SignalLevel, Int> =
         SignalLevel.entries.associateWith { level -> points.count { it.scan.summary.level == level } }
@@ -31,12 +65,20 @@ data class VisitReport(
     val isEmpty: Boolean get() = points.isEmpty()
 }
 
-fun buildVisitReport(visit: Visit, scans: List<NetScan>, generatedAt: Long): VisitReport {
+fun buildVisitReport(
+    visit: Visit,
+    scans: List<NetScan>,
+    generatedAt: Long,
+    plan: FloorPlan? = null,
+    recording: SavedRecording? = null,
+): VisitReport {
     val ordered = scans.sortedWith(compareBy<NetScan> { it.startedAt }.thenBy { it.id })
     return VisitReport(
         visit = visit,
         points = ordered.mapIndexed { index, scan -> ReportPoint(index + 1, scan) },
         generatedAt = generatedAt,
+        plan = plan,
+        recording = recording,
     )
 }
 

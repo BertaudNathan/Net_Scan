@@ -190,6 +190,14 @@ class MainActivity : ComponentActivity() {
                                                 visitId = visitId,
                                                 visitRepository = RoomVisitRepository(database.visitDao()),
                                                 netScanRepository = RoomNetScanRepository(database.netScanDao()),
+                                                planRepository = RoomFloorPlanRepository(
+                                                    database.floorPlanDao(),
+                                                    database.netScanDao(),
+                                                ),
+                                                recordingRepository = RoomRecordingRepository(
+                                                    database.recordingDao(),
+                                                    database.netScanDao(),
+                                                ),
                                                 generator = PdfReportGenerator(applicationContext),
                                             )
                                         }
