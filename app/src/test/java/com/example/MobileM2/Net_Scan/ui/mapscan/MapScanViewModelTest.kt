@@ -21,6 +21,7 @@ import com.example.MobileM2.Net_Scan.domain.OperatorStatus
 import com.example.MobileM2.Net_Scan.domain.PlanImporter
 import com.example.MobileM2.Net_Scan.domain.PlanMeasurement
 import com.example.MobileM2.Net_Scan.domain.PlanPoint
+import com.example.MobileM2.Net_Scan.domain.PlanWall
 import com.example.MobileM2.Net_Scan.domain.PositionSource
 import com.example.MobileM2.Net_Scan.domain.PositionState
 import com.example.MobileM2.Net_Scan.domain.PositioningUnavailable
@@ -56,6 +57,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -574,6 +576,133 @@ class MapScanViewModelTest {
         assertTrue(viewModel.plan.value is PlanState.Ready)
     }
 
+    @Test fun twoTapsDrawAWallAndTheNextTapContinuesIt() = vmTest {
+        manualVisit()
+        val viewModel = viewModel()
+        viewModel.editWalls()
+        viewModel.tapWall(PlanPoint(0.1f, 0.2f), TOLERANCE)
+        assertEquals(PlanPoint(0.1f, 0.2f), viewModel.wallEditor.value!!.chainStart)
+        // Presque horizontal : le mur est redressé.
+        viewModel.tapWall(PlanPoint(0.5f, 0.205f), TOLERANCE)
+        viewModel.tapWall(PlanPoint(0.5f, 0.6f), TOLERANCE)
+        runCurrent()
+
+        val walls = (viewModel.plan.value as PlanState.Ready).walls
+        assertEquals(
+            listOf(PlanPoint(0.1f, 0.2f) to PlanPoint(0.5f, 0.2f), PlanPoint(0.5f, 0.2f) to PlanPoint(0.5f, 0.6f)),
+            walls.map { it.start to it.end },
+        )
+        assertEquals(PlanPoint(0.5f, 0.6f), viewModel.wallEditor.value!!.chainStart)
+        viewModel.newWall()
+        assertNull(viewModel.wallEditor.value!!.chainStart)
+        viewModel.finishWalls()
+        assertNull(viewModel.wallEditor.value)
+    }
+
+    @Test fun theHeatmapGoesAroundTheDrawnWalls() = vmTest {
+        manualVisit()
+        plans.measurements.value = listOf(PlanMeasurement(PlanPoint(0.1f, 0.1f), SignalLevel.HIGH))
+        plans.walls.value = listOf(PlanWall(1, PlanPoint(0.2f, 0f), PlanPoint(0.2f, 1f)))
+        val ready = viewModel().plan.value as PlanState.Ready
+        assertTrue(ready.map.obstacles.isNotEmpty())
+        assertTrue(ready.map.heatmap.values.keys.none { it in ready.map.obstacles })
+    }
+
+    @Test fun tappingTheSamePointTwiceOrOffThePlanDrawsNothing() = vmTest {
+        manualVisit()
+        val viewModel = viewModel()
+        viewModel.editWalls()
+        viewModel.tapWall(PlanPoint(0.3f, 0.3f), TOLERANCE)
+        viewModel.tapWall(PlanPoint(0.3002f, 0.3f), TOLERANCE)
+        viewModel.tapWall(PlanPoint(1.5f, 0.3f), TOLERANCE)
+        runCurrent()
+        assertTrue(plans.walls.value.isEmpty())
+        assertEquals(PlanPoint(0.3f, 0.3f), viewModel.wallEditor.value!!.chainStart)
+        // Juste au bord, à moins de la tolérance : le mur s'arrête sur le bord du plan.
+        viewModel.tapWall(PlanPoint(1.005f, 0.3f), TOLERANCE)
+        runCurrent()
+        assertEquals(PlanPoint(1f, 0.3f), plans.walls.value.single().end)
+    }
+
+    @Test fun undoRemovesTheLastWallAndGoesBackToItsStart() = vmTest {
+        manualVisit()
+        val viewModel = viewModel()
+        viewModel.editWalls()
+        viewModel.tapWall(PlanPoint(0.1f, 0.2f), TOLERANCE)
+        viewModel.tapWall(PlanPoint(0.5f, 0.2f), TOLERANCE)
+        viewModel.tapWall(PlanPoint(0.5f, 0.6f), TOLERANCE)
+        runCurrent()
+
+        viewModel.undoWall()
+        runCurrent()
+        assertEquals(1, plans.walls.value.size)
+        assertEquals(PlanPoint(0.5f, 0.2f), viewModel.wallEditor.value!!.chainStart)
+        viewModel.undoWall()
+        runCurrent()
+        assertTrue(plans.walls.value.isEmpty())
+        assertEquals(PlanPoint(0.1f, 0.2f), viewModel.wallEditor.value!!.chainStart)
+        // Il ne reste que le premier point touché : l'annuler lève le crayon.
+        viewModel.undoWall()
+        assertNull(viewModel.wallEditor.value!!.chainStart)
+    }
+
+    @Test fun aWallIsChosenThenDeleted() = vmTest {
+        manualVisit()
+        plans.walls.value = listOf(
+            PlanWall(1, PlanPoint(0.1f, 0.2f), PlanPoint(0.5f, 0.2f)),
+            PlanWall(2, PlanPoint(0.1f, 0.6f), PlanPoint(0.9f, 0.6f)),
+        )
+        val viewModel = viewModel()
+        viewModel.editWalls()
+        viewModel.tapWall(PlanPoint(0.3f, 0.3f), TOLERANCE)
+        viewModel.selectWallTool(WallTool.ERASE)
+        assertNull(viewModel.wallEditor.value!!.chainStart)
+        viewModel.tapWall(PlanPoint(0.5f, 0.595f), TOLERANCE)
+        assertEquals(2L, viewModel.wallEditor.value!!.selected)
+        viewModel.deleteSelectedWall()
+        runCurrent()
+        assertEquals(listOf(1L), plans.walls.value.map { it.id })
+        assertNull(viewModel.wallEditor.value!!.selected)
+        // Toucher à côté de tout mur ne choisit rien.
+        viewModel.tapWall(PlanPoint(0.3f, 0.4f), TOLERANCE)
+        assertNull(viewModel.wallEditor.value!!.selected)
+    }
+
+    @Test fun aWallThatCouldNotBeSavedIsReported() = vmTest {
+        manualVisit()
+        plans.failWrites = true
+        val viewModel = viewModel()
+        viewModel.editWalls()
+        viewModel.tapWall(PlanPoint(0.1f, 0.2f), TOLERANCE)
+        viewModel.tapWall(PlanPoint(0.5f, 0.2f), TOLERANCE)
+        runCurrent()
+        val editor = viewModel.wallEditor.value!!
+        assertTrue(editor.saveFailed)
+        // On repart du début du mur perdu, pour le tracer à nouveau.
+        assertEquals(PlanPoint(0.1f, 0.2f), editor.chainStart)
+
+        plans.failWrites = false
+        viewModel.tapWall(PlanPoint(0.5f, 0.2f), TOLERANCE)
+        runCurrent()
+        assertFalse(viewModel.wallEditor.value!!.saveFailed)
+        assertEquals(1, plans.walls.value.size)
+    }
+
+    @Test fun wallsWaitForTheScaleAndLeaveThePositionAlone() = vmTest {
+        manualVisit(metersPerPixel = null)
+        val viewModel = viewModel()
+        viewModel.editWalls()
+        assertNull(viewModel.wallEditor.value)
+
+        plans.plan.value = plans.plan.value!!.copy(metersPerPixel = 0.025f)
+        runCurrent()
+        viewModel.editWalls()
+        assertNotNull(viewModel.wallEditor.value)
+        // Pendant le tracé, toucher le plan dessine : la position pour le scan ne bouge pas.
+        viewModel.placeHere(PlanPoint(0.5f, 0.5f))
+        assertNull(viewModel.manualPosition.value)
+    }
+
     /** Visite en mode manuel avec un plan de 2000 × 1000 pixels. */
     private fun manualVisit(metersPerPixel: Float? = 0.025f) {
         visits.visit.value = visits.visit.value!!.copy(mode = MappingMode.MANUAL)
@@ -660,6 +789,20 @@ class MapScanViewModelTest {
             plan.value = plan.value?.copy(metersPerPixel = metersPerPixel)
         }
         override fun observePlanMeasurements(visitId: Long): Flow<List<PlanMeasurement>> = measurements
+
+        val walls = MutableStateFlow<List<PlanWall>>(emptyList())
+        var failWrites = false
+        override fun observeWalls(visitId: Long): Flow<List<PlanWall>> = walls
+        override suspend fun addWall(visitId: Long, start: PlanPoint, end: PlanPoint): Long {
+            if (failWrites) throw java.io.IOException("disk full")
+            val id = (walls.value.maxOfOrNull { it.id } ?: 0L) + 1
+            walls.value += PlanWall(id, start, end)
+            return id
+        }
+        override suspend fun deleteWall(id: Long) {
+            if (failWrites) throw java.io.IOException("disk full")
+            walls.value = walls.value.filterNot { it.id == id }
+        }
     }
 
     private class FakeRecordingRepository : RecordingRepository {
@@ -687,5 +830,7 @@ class MapScanViewModelTest {
         const val VISIT_ID = 7L
         const val RECORDING_ID = 100L
         val WALL = GridCell(0, -6)
+        /** Tolérance d'un toucher, en pixels du plan. */
+        const val TOLERANCE = 20f
     }
 }

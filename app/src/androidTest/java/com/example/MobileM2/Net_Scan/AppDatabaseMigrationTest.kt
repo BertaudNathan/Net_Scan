@@ -21,6 +21,7 @@ import com.example.MobileM2.Net_Scan.domain.NetScanSummary
 import com.example.MobileM2.Net_Scan.domain.NetworkTechnology
 import com.example.MobileM2.Net_Scan.domain.PlanMeasurement
 import com.example.MobileM2.Net_Scan.domain.PlanPoint
+import com.example.MobileM2.Net_Scan.domain.PlanWall
 import com.example.MobileM2.Net_Scan.domain.SignalLevel
 import com.example.MobileM2.Net_Scan.domain.ThemeMode
 import com.example.MobileM2.Net_Scan.domain.Handedness
@@ -267,6 +268,38 @@ class AppDatabaseMigrationTest {
         val plans = RoomFloorPlanRepository(database.floorPlanDao(), database.netScanDao())
         plans.savePlan(FloorPlan(7, "plan.png", 800, 600, null))
         assertEquals(FloorPlan(7, "plan.png", 800, 600, null), plans.observePlan(7).first())
+    }
+
+    @Test fun version8KeepsThePlanAndGainsItsWalls() = runBlocking {
+        // Version 8 : tout réuni, sans murs tracés.
+        createVersion(
+            8,
+            ARCORE_V5_TABLES + listOf(
+                "ALTER TABLE visits ADD COLUMN mappingMode TEXT NOT NULL DEFAULT 'ARCORE'",
+                "CREATE TABLE floor_plans (visitId INTEGER NOT NULL, imagePath TEXT NOT NULL, widthPx INTEGER NOT NULL, heightPx INTEGER NOT NULL, metersPerPixel REAL, PRIMARY KEY(visitId), FOREIGN KEY(visitId) REFERENCES visits(id) ON UPDATE NO ACTION ON DELETE CASCADE)",
+                "ALTER TABLE net_scans ADD COLUMN planX REAL",
+                "ALTER TABLE net_scans ADD COLUMN planY REAL",
+                "CREATE TABLE app_preferences (id INTEGER NOT NULL, theme TEXT NOT NULL, handedness TEXT NOT NULL DEFAULT 'RIGHT', PRIMARY KEY(id))",
+                "INSERT INTO visits (id, building, client, address, createdAt, mappingMode) VALUES (8, 'Hall C', '', '', 42, 'MANUAL')",
+                "INSERT INTO floor_plans (visitId, imagePath, widthPx, heightPx, metersPerPixel) VALUES (8, 'plan.png', 2000, 1000, 0.025)",
+            ),
+        )
+        val database = open()
+        val plans = RoomFloorPlanRepository(database.floorPlanDao(), database.netScanDao())
+        assertEquals(FloorPlan(8, "plan.png", 2000, 1000, 0.025f), plans.observePlan(8).first())
+        assertEquals(emptyList<PlanWall>(), plans.observeWalls(8).first())
+
+        val first = plans.addWall(8, PlanPoint(0.1f, 0.2f), PlanPoint(0.5f, 0.2f))
+        val second = plans.addWall(8, PlanPoint(0.5f, 0.2f), PlanPoint(0.5f, 0.6f))
+        assertEquals(
+            listOf(PlanWall(first, PlanPoint(0.1f, 0.2f), PlanPoint(0.5f, 0.2f)), PlanWall(second, PlanPoint(0.5f, 0.2f), PlanPoint(0.5f, 0.6f))),
+            plans.observeWalls(8).first(),
+        )
+        plans.deleteWall(first)
+        assertEquals(listOf(second), plans.observeWalls(8).first().map { it.id })
+        // Les murs disparaissent avec leur visite.
+        database.openHelper.writableDatabase.execSQL("DELETE FROM visits WHERE id = 8")
+        assertEquals(emptyList<PlanWall>(), plans.observeWalls(8).first())
     }
 
     @Test fun anEmptyRecordingDoesNotHideThePreviousWalk() = runBlocking {

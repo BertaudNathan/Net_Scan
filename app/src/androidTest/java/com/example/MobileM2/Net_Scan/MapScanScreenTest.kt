@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
@@ -389,6 +390,39 @@ class MapScanScreenTest {
         compose.onNodeWithText(text(R.string.close)).performClick()
         // La personne va bouger : la mesure suivante demande une nouvelle position.
         waitForText(text(R.string.plan_place_yourself))
+    }
+
+    @Test fun wallsAreDrawnOnThePlanThenErased() {
+        manualVisitWithPlan(scaled = true)
+        visitName = "Hall B"
+        showScreen()
+        waitForText(text(R.string.plan_place_yourself))
+        compose.onNodeWithText(text(R.string.plan_walls_edit)).performClick()
+        waitForText(text(R.string.plan_walls_first))
+        // Le scan attend la fin du tracé.
+        compose.onAllNodesWithText(text(R.string.net_scan_start)).assertCountEquals(0)
+
+        val planView = compose.onNode(descriptionStartingWith(prefix(R.string.plan_description)))
+        planView.performTouchInput { click(Offset(width * 0.25f, centerY)) }
+        waitForText(text(R.string.plan_walls_next))
+        planView.performTouchInput { click(Offset(width * 0.75f, centerY)) }
+        val walls = { runBlocking { db.floorPlanDao().observeWalls(visitId).first() } }
+        compose.waitUntil(10_000) { walls().size == 1 }
+        val wall = walls().single()
+        assertTrue(wall.startU < 0.4f && wall.endU > 0.6f)
+        // Même hauteur touchée : le mur est horizontal.
+        assertEquals(wall.startV, wall.endV, 1e-6f)
+
+        compose.onNodeWithText(text(R.string.plan_walls_erase)).performClick()
+        waitForText(text(R.string.plan_walls_pick))
+        planView.performTouchInput { click(Offset(width * 0.5f, centerY)) }
+        waitForText(text(R.string.plan_walls_picked))
+        compose.onNodeWithText(text(R.string.plan_walls_delete)).performClick()
+        compose.waitUntil(10_000) { walls().isEmpty() }
+
+        compose.onNodeWithText(text(R.string.plan_walls_done)).performClick()
+        waitForText(text(R.string.plan_place_yourself))
+        compose.onNodeWithText(text(R.string.net_scan_start)).assertIsDisplayed()
     }
 
     private fun descriptionStartingWith(start: String) = SemanticsMatcher("description starting with $start") { node ->

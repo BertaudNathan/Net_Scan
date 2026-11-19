@@ -88,8 +88,6 @@ object Design {
 
     /** Marges de la carte sous les bandeaux du haut et les commandes du bas. */
     val mapTopInset = 56.dp
-    /** Mode manuel : commandes de la visite et consigne au-dessus du plan. */
-    val planTopInset = 112.dp
     val mapBottomInset = 128.dp
 }
 
@@ -109,6 +107,16 @@ object SignalColors {
 
     /** Opacité du filtre posé sur la carte pendant un scan réseau. */
     const val FILTER_ALPHA = 0.35f
+}
+
+/**
+ * Murs tracés sur le plan. Le plan reste une image claire quel que soit le thème : ces couleurs sont
+ * fixes. Le liseré blanc détache le mur des traits noirs du plan et des couleurs de la heatmap.
+ */
+object PlanColors {
+    val wall = Navy
+    val casing = White
+    val selected = ErrorLight
 }
 
 /** Bouton d'enregistrement façon caméra : pastille rouge pour démarrer, carré noir pour arrêter. */
