@@ -88,6 +88,8 @@ object Design {
 
     /** Marges de la carte sous les bandeaux du haut et les commandes du bas. */
     val mapTopInset = 56.dp
+    /** Mode manuel : commandes de la visite et consigne au-dessus du plan. */
+    val planTopInset = 112.dp
     val mapBottomInset = 128.dp
 }
 

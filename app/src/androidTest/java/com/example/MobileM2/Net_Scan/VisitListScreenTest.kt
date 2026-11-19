@@ -27,6 +27,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.MobileM2.Net_Scan.data.RoomVisitRepository
+import com.example.MobileM2.Net_Scan.domain.MappingMode
 import com.example.MobileM2.Net_Scan.data.AppDatabase
 import com.example.MobileM2.Net_Scan.ui.visits.VisitListViewModel
 import com.example.MobileM2.Net_Scan.ui.visits.VisitListScreen
@@ -211,7 +212,7 @@ class VisitListScreenTest {
 
     @Test fun databaseSurvivesReopening() = runBlocking {
         val repository = RoomVisitRepository(db.visitDao())
-        repository.createVisit("Entrepôt", "Client", "Adresse")
+        repository.createVisit("Entrepôt", "Client", "Adresse", MappingMode.ARCORE)
         db.close()
         db = Room.databaseBuilder(context, AppDatabase::class.java, databaseName).build()
         val visit = db.visitDao().observeAll().first().single()

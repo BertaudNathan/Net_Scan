@@ -1,5 +1,6 @@
 package com.example.MobileM2.Net_Scan.ui.report
 
+import com.example.MobileM2.Net_Scan.domain.MappingMode
 import com.example.MobileM2.Net_Scan.domain.NetScan
 import com.example.MobileM2.Net_Scan.domain.NetScanMode
 import com.example.MobileM2.Net_Scan.domain.NetScanRepository
@@ -113,7 +114,7 @@ class ReportViewModelTest {
         val visit = MutableStateFlow<Visit?>(Visit(VISIT_ID, "Entrepôt Nord", "Acme", "", 0))
         override fun observeVisits(): Flow<List<Visit>> = visit.map { listOfNotNull(it) }
         override fun observeVisit(id: Long): Flow<Visit?> = visit
-        override suspend fun createVisit(building: String, client: String, address: String) = Unit
+        override suspend fun createVisit(building: String, client: String, address: String, mode: MappingMode) = Unit
     }
 
     private class FakeNetScanRepository : NetScanRepository {

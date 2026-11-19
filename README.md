@@ -25,6 +25,16 @@ Chaque enregistrement est un parcours à part, avec son propre repère ARCore : 
 
 ARCore est facultatif : sur un téléphone non compatible, ou sans les Services Google Play pour la RA, les scans réseau restent possibles mais ne sont pas placés sur la carte. Limites connues : la dérive d'ARCore sur les longues distances n'est pas corrigée, les parcours d'une même visite ne se superposent pas, la carte ne sait pas ce qu'est un obstacle (béton, rayonnage, chambre froide : annotations à venir), et les vitres, l'inox ou l'obscurité peuvent créer des trous ou de faux obstacles.
 
+### Mode manuel : plan importé
+
+À la création d'une visite, on choisit le mode : **ARCore** (la carte se dessine en filmant) ou **plan manuel**. Le choix est définitif pour la visite. En mode manuel, la caméra n'est pas utilisée et rien n'est enregistré par ARCore :
+
+1. importer le plan du bâtiment, image ou PDF (première page), par exemple une photo du plan d'évacuation. Il est copié dans le stockage privé de l'application, réduit à 2560 pixels de côté, et ne quitte pas l'appareil ;
+2. régler l'échelle : toucher les deux extrémités d'une longueur connue (mur, porte), puis saisir cette longueur en mètres. Le bouton « Échelle » permet de la régler à nouveau ;
+3. avant chaque scan réseau, toucher sa position sur le plan (cible). Le bouton « Scan réseau » reste inactif tant qu'aucune position n'est choisie, et la position est effacée après chaque mesure, puisqu'on se déplace ensuite.
+
+Les scans sont enregistrés à leur place sur le plan, en fraction de sa largeur et de sa hauteur : régler l'échelle à nouveau ne les déplace pas. La heatmap est la même qu'en mode ARCore (cases de 50 cm, estimation IDW), mais à vol d'oiseau puisque les murs du plan ne sont pas connus : une estimation peut traverser un mur. Seules les cases à moins de 6 m d'un scan sont colorées, le reste du plan reste visible tel quel. On zoome en pinçant et on revient à la vue d'ensemble en touchant deux fois.
+
 Les seuils suivent la synthèse du projet : RSRP > −80 dBm ou SINR > 13 dB pour HAUT, < −100 dBm ou < 0 dB pour FAIBLE, et le pire des deux indicateurs est retenu. « Pas de service » donne INEXISTANT.
 
 Le scan réseau demande la localisation précise (Android l'exige pour lire les informations de cellule) et l'accès au téléphone. ARCore demande la caméra, et lit le gyroscope et l'accéléromètre à haute fréquence (`HIGH_SAMPLING_RATE_SENSORS`, accordée sans demande à l'utilisateur) : sans elle, Android 12+ bride ces capteurs et le suivi décroche. Des sources simulées de mesures (`SimulatedSignalSource`) et de positions (`SimulatedPositionSource`) servent aux tests automatiques ; quand l'une d'elles est utilisée, l'écran affiche « Données simulées ».

@@ -6,6 +6,7 @@ import com.example.MobileM2.Net_Scan.domain.NetScanMode
 import com.example.MobileM2.Net_Scan.domain.NetScanRepository
 import com.example.MobileM2.Net_Scan.domain.NetScanSummary
 import com.example.MobileM2.Net_Scan.domain.NetworkTechnology
+import com.example.MobileM2.Net_Scan.domain.PlanPoint
 import com.example.MobileM2.Net_Scan.domain.SignalLevel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -23,6 +24,7 @@ class RoomNetScanRepository(private val dao: NetScanDao) : NetScanRepository {
                     id = row.id,
                     recordingId = row.recordingId,
                     position = row.mapX?.let { x -> row.mapZ?.let { z -> FloorPoint(x, z) } },
+                    planPosition = row.planX?.let { u -> row.planY?.let { v -> PlanPoint(u, v) } },
                     summary = NetScanSummary(
                         level = SignalLevel.valueOf(row.level),
                         technology = NetworkTechnology.valueOf(row.technology),
@@ -54,6 +56,8 @@ class RoomNetScanRepository(private val dao: NetScanDao) : NetScanRepository {
                 recordingId = scan.recordingId,
                 mapX = scan.position?.x,
                 mapZ = scan.position?.z,
+                planX = scan.planPosition?.u,
+                planY = scan.planPosition?.v,
             ),
         )
     }

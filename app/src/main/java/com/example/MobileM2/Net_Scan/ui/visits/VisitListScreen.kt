@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -33,6 +35,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -71,6 +74,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.MobileM2.Net_Scan.R
+import com.example.MobileM2.Net_Scan.domain.MappingMode
 import com.example.MobileM2.Net_Scan.domain.Visit
 import com.example.MobileM2.Net_Scan.ui.theme.Design
 import com.example.MobileM2.Net_Scan.ui.theme.DestructiveButton
@@ -297,6 +301,59 @@ private fun VisitCard(visit: Visit, onClick: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Text(
+                text = stringResource(if (visit.mode == MappingMode.MANUAL) R.string.visit_mode_manual else R.string.visit_mode_arcore),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Choix du mode de la visite, définitif : les mesures d'un mode ne se placent pas sur la carte de l'autre. */
+@Composable
+private fun MappingModeChoice(selected: MappingMode, enabled: Boolean, onSelect: (MappingMode) -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().selectableGroup(),
+        verticalArrangement = Arrangement.spacedBy(Design.spaceExtraSmall),
+    ) {
+        Text(
+            text = stringResource(R.string.mapping_mode_title),
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.semantics { heading() },
+        )
+        ModeOption(
+            title = stringResource(R.string.mapping_mode_arcore),
+            description = stringResource(R.string.mapping_mode_arcore_description),
+            selected = selected == MappingMode.ARCORE,
+            enabled = enabled,
+            onClick = { onSelect(MappingMode.ARCORE) },
+        )
+        ModeOption(
+            title = stringResource(R.string.mapping_mode_manual),
+            description = stringResource(R.string.mapping_mode_manual_description),
+            selected = selected == MappingMode.MANUAL,
+            enabled = enabled,
+            onClick = { onSelect(MappingMode.MANUAL) },
+        )
+    }
+}
+
+@Composable
+private fun ModeOption(title: String, description: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .heightIn(min = Design.touchTarget)
+            .clip(Design.cardShape)
+            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .padding(vertical = Design.spaceExtraSmall),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Design.spaceSmall),
+    ) {
+        RadioButton(selected = selected, onClick = null, enabled = enabled)
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -334,10 +391,11 @@ private fun BuildingMark() {
 @Composable
 private fun CreateVisitDialog(
     state: CreationState,
-    onCreate: (String, String, String) -> Unit,
+    onCreate: (String, String, String, MappingMode) -> Unit,
     onClose: () -> Unit,
 ) {
     var building by rememberSaveable { mutableStateOf("") }
+    var mode by rememberSaveable { mutableStateOf(MappingMode.ARCORE) }
     var client by rememberSaveable { mutableStateOf("") }
     var address by rememberSaveable { mutableStateOf("") }
     var showDiscard by rememberSaveable { mutableStateOf(false) }
@@ -377,7 +435,8 @@ private fun CreateVisitDialog(
             )
             Surface(
                 modifier = Modifier.fillMaxWidth()
-                    .heightIn(max = maxHeight)
+                    // Le fond reste visible en haut, même clavier ouvert : on peut toujours toucher à côté pour fermer.
+                    .heightIn(max = maxHeight * SHEET_MAX_HEIGHT)
                     .semantics { paneTitle = dialogTitle }
                     .pointerInput(Unit) {
                         // Keep taps inside the sheet from reaching the dismissible backdrop.
@@ -451,6 +510,7 @@ private fun CreateVisitDialog(
                             enabled = state != CreationState.Saving,
                             singleLine = true,
                         )
+                        MappingModeChoice(mode, enabled = state != CreationState.Saving, onSelect = { mode = it })
                         if (state == CreationState.Error) {
                             Text(
                                 text = stringResource(R.string.save_error),
@@ -467,7 +527,7 @@ private fun CreateVisitDialog(
                         }
                     }
                     PrimaryButton(
-                        onClick = { onCreate(building, client, address) },
+                        onClick = { onCreate(building, client, address, mode) },
                         modifier = Modifier.fillMaxWidth().padding(Design.spaceLarge),
                         enabled = state != CreationState.Saving,
                     ) {
@@ -494,3 +554,5 @@ private fun CreateVisitDialog(
         )
     }
 }
+
+private const val SHEET_MAX_HEIGHT = 0.85f

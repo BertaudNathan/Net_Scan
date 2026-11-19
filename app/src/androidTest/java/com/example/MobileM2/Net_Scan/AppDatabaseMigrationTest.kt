@@ -7,9 +7,11 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.MobileM2.Net_Scan.data.AppDatabase
 import com.example.MobileM2.Net_Scan.data.RoomNetScanRepository
+import com.example.MobileM2.Net_Scan.data.RoomFloorPlanRepository
 import com.example.MobileM2.Net_Scan.data.RoomPreferencesRepository
 import com.example.MobileM2.Net_Scan.data.RoomRecordingRepository
 import com.example.MobileM2.Net_Scan.data.VisitEntity
+import com.example.MobileM2.Net_Scan.domain.FloorPlan
 import com.example.MobileM2.Net_Scan.domain.FloorPoint
 import com.example.MobileM2.Net_Scan.domain.GridCell
 import com.example.MobileM2.Net_Scan.domain.MapMeasurement
@@ -17,6 +19,8 @@ import com.example.MobileM2.Net_Scan.domain.NetScan
 import com.example.MobileM2.Net_Scan.domain.NetScanMode
 import com.example.MobileM2.Net_Scan.domain.NetScanSummary
 import com.example.MobileM2.Net_Scan.domain.NetworkTechnology
+import com.example.MobileM2.Net_Scan.domain.PlanMeasurement
+import com.example.MobileM2.Net_Scan.domain.PlanPoint
 import com.example.MobileM2.Net_Scan.domain.SignalLevel
 import com.example.MobileM2.Net_Scan.domain.ThemeMode
 import com.example.MobileM2.Net_Scan.domain.Handedness
@@ -140,6 +144,8 @@ class AppDatabaseMigrationTest {
             ),
         )
         val database = open()
+        // Les visites d'avant le choix du mode sont des visites ARCore.
+        assertEquals("ARCORE", database.visitDao().observeAll().first().single().mappingMode)
         val old = database.netScanDao().observeForVisit(9).first().single()
         assertEquals("LOW", old.level)
         assertNull(old.recordingId)
@@ -153,6 +159,10 @@ class AppDatabaseMigrationTest {
         )
         recordings.saveCells(recordingId, mapOf(GridCell(1, 2) to 4f, GridCell(0, 0) to -1f))
         recordings.saveCells(recordingId, mapOf(GridCell(0, 0) to -2f))
+        val plans = RoomFloorPlanRepository(database.floorPlanDao(), database.netScanDao())
+        plans.savePlan(FloorPlan(9, "plan.png", 800, 600, null))
+        plans.setScale(9, 0.02f)
+        assertEquals(FloorPlan(9, "plan.png", 800, 600, 0.02f), plans.observePlan(9).first())
         val latest = recordings.observeLatest(9).first()!!
         assertEquals(mapOf(GridCell(1, 2) to 4f, GridCell(0, 0) to -2f), latest.cells)
         assertEquals(listOf(listOf(FloorPoint(0f, 0f), FloorPoint(1f, 0f))), latest.segments)
@@ -215,6 +225,50 @@ class AppDatabaseMigrationTest {
         assertEquals(FloorPoint(0f, -2f), RoomNetScanRepository(database.netScanDao()).observeForVisit(5).first().single().position)
     }
 
+    @Test fun manualVersion6KeepsThePlanAndGainsHandedness() = runBlocking {
+        // Version 6 de la branche du mode manuel : ARCore et plan importé, sans préférence gaucher.
+        createVersion(
+            6,
+            ARCORE_V5_TABLES + listOf(
+                "ALTER TABLE visits ADD COLUMN mappingMode TEXT NOT NULL DEFAULT 'ARCORE'",
+                "CREATE TABLE floor_plans (visitId INTEGER NOT NULL, imagePath TEXT NOT NULL, widthPx INTEGER NOT NULL, heightPx INTEGER NOT NULL, metersPerPixel REAL, PRIMARY KEY(visitId), FOREIGN KEY(visitId) REFERENCES visits(id) ON UPDATE NO ACTION ON DELETE CASCADE)",
+                "ALTER TABLE net_scans ADD COLUMN planX REAL",
+                "ALTER TABLE net_scans ADD COLUMN planY REAL",
+                "CREATE TABLE app_preferences (id INTEGER NOT NULL, theme TEXT NOT NULL, PRIMARY KEY(id))",
+                "INSERT INTO visits (id, building, client, address, createdAt, mappingMode) VALUES (6, 'Hall B', '', '', 42, 'MANUAL')",
+                "INSERT INTO floor_plans (visitId, imagePath, widthPx, heightPx, metersPerPixel) VALUES (6, 'plan.png', 2000, 1000, 0.025)",
+                "INSERT INTO net_scans (visitId, startedAt, durationSeconds, timerSeconds, operatorName, technology, level, rsrpMedianDbm, sinrMedianDb, sampleCount, band, cellId, planX, planY) VALUES (6, 1, 30, 30, 'Orange', 'LTE', 'HIGH', -75.0, 15.0, 30, 20, 1, 0.4, 0.6)",
+                "INSERT INTO app_preferences (id, theme) VALUES (1, 'LIGHT')",
+            ),
+        )
+        val database = open()
+        assertEquals("MANUAL", database.visitDao().observeAll().first().single().mappingMode)
+        val plans = RoomFloorPlanRepository(database.floorPlanDao(), database.netScanDao())
+        assertEquals(FloorPlan(6, "plan.png", 2000, 1000, 0.025f), plans.observePlan(6).first())
+        assertEquals(listOf(PlanMeasurement(PlanPoint(0.4f, 0.6f), SignalLevel.HIGH)), plans.observePlanMeasurements(6).first())
+        assertEquals(Handedness.RIGHT, RoomPreferencesRepository(database.preferencesDao()).observePreferences().first().handedness)
+        // L'historique retrouve aussi la place de la mesure sur le plan.
+        assertEquals(PlanPoint(0.4f, 0.6f), RoomNetScanRepository(database.netScanDao()).observeForVisit(6).first().single().planPosition)
+    }
+
+    @Test fun mergedVersion7GainsTheManualModeWithVisitsInArcore() = runBlocking {
+        // Version 7 : main et ARCore réunis, sans mode manuel.
+        createVersion(
+            7,
+            ARCORE_V5_TABLES + listOf(
+                "CREATE TABLE app_preferences (id INTEGER NOT NULL, theme TEXT NOT NULL, handedness TEXT NOT NULL DEFAULT 'RIGHT', PRIMARY KEY(id))",
+                "INSERT INTO visits (id, building, client, address, createdAt) VALUES (7, 'Entrepôt', '', '', 42)",
+                "INSERT INTO app_preferences (id, theme, handedness) VALUES (1, 'DARK', 'LEFT')",
+            ),
+        )
+        val database = open()
+        assertEquals("ARCORE", database.visitDao().observeAll().first().single().mappingMode)
+        assertEquals(Handedness.LEFT, RoomPreferencesRepository(database.preferencesDao()).observePreferences().first().handedness)
+        val plans = RoomFloorPlanRepository(database.floorPlanDao(), database.netScanDao())
+        plans.savePlan(FloorPlan(7, "plan.png", 800, 600, null))
+        assertEquals(FloorPlan(7, "plan.png", 800, 600, null), plans.observePlan(7).first())
+    }
+
     @Test fun anEmptyRecordingDoesNotHideThePreviousWalk() = runBlocking {
         val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build().also { db = it }
         val visitId = database.visitDao().insert(VisitEntity(building = "Hall", client = "", address = "", createdAt = 1))
@@ -226,6 +280,19 @@ class AppDatabaseMigrationTest {
     }
 
     private companion object {
+        /** Tables de la version 5 de la branche ARCore, sans préférences : parcours, cellules, scans placés. */
+        val ARCORE_V5_TABLES = listOf(
+            "CREATE TABLE visits (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, building TEXT NOT NULL, client TEXT NOT NULL, address TEXT NOT NULL, createdAt INTEGER NOT NULL)",
+            "CREATE TABLE recordings (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, visitId INTEGER NOT NULL, startedAt INTEGER NOT NULL, endedAt INTEGER, FOREIGN KEY(visitId) REFERENCES visits(id) ON UPDATE NO ACTION ON DELETE CASCADE)",
+            "CREATE INDEX index_recordings_visitId ON recordings (visitId)",
+            "CREATE TABLE recording_points (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, recordingId INTEGER NOT NULL, segment INTEGER NOT NULL, x REAL NOT NULL, z REAL NOT NULL, FOREIGN KEY(recordingId) REFERENCES recordings(id) ON UPDATE NO ACTION ON DELETE CASCADE)",
+            "CREATE INDEX index_recording_points_recordingId ON recording_points (recordingId)",
+            "CREATE TABLE recording_cells (recordingId INTEGER NOT NULL, cellCol INTEGER NOT NULL, cellRow INTEGER NOT NULL, logOdds REAL NOT NULL, PRIMARY KEY(recordingId, cellCol, cellRow), FOREIGN KEY(recordingId) REFERENCES recordings(id) ON UPDATE NO ACTION ON DELETE CASCADE)",
+            "CREATE TABLE net_scans (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, visitId INTEGER NOT NULL, startedAt INTEGER NOT NULL, durationSeconds INTEGER NOT NULL, timerSeconds INTEGER, operatorName TEXT, technology TEXT NOT NULL, level TEXT NOT NULL, rsrpMedianDbm REAL, sinrMedianDb REAL, sampleCount INTEGER NOT NULL, band INTEGER, cellId INTEGER, recordingId INTEGER REFERENCES recordings(id) ON UPDATE NO ACTION ON DELETE SET NULL, mapX REAL, mapZ REAL, FOREIGN KEY(visitId) REFERENCES visits(id) ON UPDATE NO ACTION ON DELETE CASCADE)",
+            "CREATE INDEX index_net_scans_visitId ON net_scans (visitId)",
+            "CREATE INDEX index_net_scans_recordingId ON net_scans (recordingId)",
+        )
+
         /** Tables communes de la version 3 : visites et scans réseau. */
         val V3_TABLES = listOf(
             "CREATE TABLE visits (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, building TEXT NOT NULL, client TEXT NOT NULL, address TEXT NOT NULL, createdAt INTEGER NOT NULL)",

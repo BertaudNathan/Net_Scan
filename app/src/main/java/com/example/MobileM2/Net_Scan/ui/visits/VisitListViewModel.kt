@@ -2,6 +2,7 @@ package com.example.MobileM2.Net_Scan.ui.visits
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.MobileM2.Net_Scan.domain.MappingMode
 import com.example.MobileM2.Net_Scan.domain.Visit
 import com.example.MobileM2.Net_Scan.domain.VisitRepository
 import java.util.logging.Level
@@ -58,7 +59,7 @@ class VisitListViewModel(private val repository: VisitRepository) : ViewModel() 
 
     fun resetCreation() { mutableCreationState.value = CreationState.Idle }
 
-    fun createVisit(building: String, client: String, address: String) {
+    fun createVisit(building: String, client: String, address: String, mode: MappingMode = MappingMode.ARCORE) {
         if (mutableCreationState.value == CreationState.Saving) return
         val name = building.trim()
         if (name.isEmpty()) {
@@ -68,7 +69,7 @@ class VisitListViewModel(private val repository: VisitRepository) : ViewModel() 
         mutableCreationState.value = CreationState.Saving
         viewModelScope.launch {
             try {
-                repository.createVisit(name, client.trim(), address.trim())
+                repository.createVisit(name, client.trim(), address.trim(), mode)
                 mutableCreationState.value = CreationState.Saved
             } catch (error: CancellationException) {
                 throw error
