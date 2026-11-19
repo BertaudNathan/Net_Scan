@@ -26,6 +26,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
+import androidx.test.espresso.action.ViewActions
+import androidx.test.espresso.matcher.RootMatchers
+import androidx.test.espresso.matcher.ViewMatchers
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.MobileM2.Net_Scan.data.RoomVisitRepository
 import com.example.MobileM2.Net_Scan.data.AppDatabase
@@ -178,8 +181,9 @@ class VisitListScreenTest {
         compose.onNodeWithText(text(R.string.new_scan)).performClick()
         compose.onNodeWithText(text(R.string.building_name)).performTextInput("Magasin")
         // Clavier ouvert sur un petit écran, le formulaire occupe toute la hauteur : il n'y a
-        // plus rien à toucher « en dehors ». On le ferme comme le ferait l'utilisateur.
-        Espresso.closeSoftKeyboard()
+        // plus rien à toucher « en dehors ». On le ferme comme le ferait l'utilisateur, depuis la
+        // fenêtre du formulaire (Espresso.closeSoftKeyboard() attendrait le focus de l'activité).
+        Espresso.onView(ViewMatchers.isRoot()).inRoot(RootMatchers.isDialog()).perform(ViewActions.closeSoftKeyboard())
         compose.waitForIdle()
         compose.onNode(isDialog()).performTouchInput {
             click(Offset(width / 2f, height * 0.1f))
