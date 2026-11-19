@@ -48,6 +48,7 @@ import com.example.MobileM2.Net_Scan.data.position.SimulatedPositionSource
 import com.example.MobileM2.Net_Scan.data.signal.SimulatedSignalSource
 import com.example.MobileM2.Net_Scan.domain.FloorPlan
 import com.example.MobileM2.Net_Scan.domain.MappingMode
+import com.example.MobileM2.Net_Scan.domain.PlanPoint
 import com.example.MobileM2.Net_Scan.domain.PositionSource
 import com.example.MobileM2.Net_Scan.domain.PositionState
 import com.example.MobileM2.Net_Scan.domain.PositioningUnavailable
@@ -423,6 +424,28 @@ class MapScanScreenTest {
         compose.onNodeWithText(text(R.string.plan_walls_done)).performClick()
         waitForText(text(R.string.plan_place_yourself))
         compose.onNodeWithText(text(R.string.net_scan_start)).assertIsDisplayed()
+    }
+
+    @Test fun theZonesToMeasureNeedAClosedOutline() {
+        manualVisitWithPlan(scaled = true)
+        val plans = RoomFloorPlanRepository(db.floorPlanDao(), db.netScanDao())
+        // Contour d'un bâtiment de 9 × 4 m sur le plan de 10 × 5 m.
+        val corners = listOf(PlanPoint(0.05f, 0.1f), PlanPoint(0.95f, 0.1f), PlanPoint(0.95f, 0.9f), PlanPoint(0.05f, 0.9f))
+        val walls = runBlocking { corners.indices.map { plans.addWall(visitId, corners[it], corners[(it + 1) % corners.size]) } }
+        visitName = "Hall B"
+        showScreen()
+        waitForText(text(R.string.plan_place_yourself))
+
+        compose.onNodeWithText(text(R.string.coverage_toggle)).performClick()
+        // « Couverture 0 % · 2 scans suggérés : … » : aucun scan, tout est à mesurer.
+        val summary = text(R.string.coverage_summary, 0, "").substringBefore("·").trim()
+        compose.waitUntil(10_000) { compose.onAllNodes(hasText(summary, substring = true)).fetchSemanticsNodes().isNotEmpty() }
+
+        // Un mur extérieur en moins : impossible de savoir ce qui est dedans.
+        runBlocking { plans.deleteWall(walls.first()) }
+        waitForText(text(R.string.coverage_outline_open, 2))
+        compose.onNodeWithText(text(R.string.coverage_toggle)).performClick()
+        waitForText(text(R.string.plan_place_yourself))
     }
 
     private fun descriptionStartingWith(start: String) = SemanticsMatcher("description starting with $start") { node ->

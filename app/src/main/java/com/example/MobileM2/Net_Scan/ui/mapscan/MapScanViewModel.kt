@@ -2,6 +2,8 @@ package com.example.MobileM2.Net_Scan.ui.mapscan
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.MobileM2.Net_Scan.domain.Coverage
+import com.example.MobileM2.Net_Scan.domain.CoverageRules
 import com.example.MobileM2.Net_Scan.domain.FloorMap
 import com.example.MobileM2.Net_Scan.domain.FloorPlan
 import com.example.MobileM2.Net_Scan.domain.FloorPlanRepository
@@ -31,6 +33,7 @@ import com.example.MobileM2.Net_Scan.domain.SignalSample
 import com.example.MobileM2.Net_Scan.domain.SignalSource
 import com.example.MobileM2.Net_Scan.domain.Visit
 import com.example.MobileM2.Net_Scan.domain.VisitRepository
+import com.example.MobileM2.Net_Scan.domain.analyzeCoverage
 import com.example.MobileM2.Net_Scan.domain.medianPoint
 import com.example.MobileM2.Net_Scan.domain.onPlan
 import com.example.MobileM2.Net_Scan.domain.scaleFrom
@@ -58,9 +61,11 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
@@ -117,6 +122,16 @@ sealed interface PlanState {
     data class Ready(val plan: FloorPlan, val map: FloorMap, val walls: List<PlanWall> = emptyList()) : PlanState
 
     data object Error : PlanState
+}
+
+/** Zones du bâtiment qui manquent de scans, affichées à la demande sur le plan. */
+sealed interface CoverageState {
+    data object Hidden : CoverageState
+
+    /** Première analyse en cours ; les suivantes remplacent la précédente une fois prêtes. */
+    data object Computing : CoverageState
+
+    data class Shown(val coverage: Coverage) : CoverageState
 }
 
 /** Outil du tracé des murs : tracer des murs reliés, ou en choisir un pour l'effacer. */
@@ -204,6 +219,7 @@ class MapScanViewModel(
     private val mutableManualPosition = MutableStateFlow<PlanPoint?>(null)
     private val mutableImport = MutableStateFlow(ImportStatus.IDLE)
     private val mutableWallEditor = MutableStateFlow<WallEditor?>(null)
+    private val showCoverage = MutableStateFlow(false)
     /** Position sur le plan retenue au lancement du scan réseau en cours (mode manuel). */
     private var scanPlanPosition: PlanPoint? = null
     private var active: ActiveRecording? = null
@@ -276,6 +292,28 @@ class MapScanViewModel(
             emit(PlanState.Error)
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, PlanState.Loading)
+
+    /**
+     * Mode manuel : zones à plus de [CoverageRules.COVERAGE_RADIUS] de parcours de tout scan, et scans
+     * suggérés pour les couvrir. Recalculées à chaque scan ou mur ajouté tant qu'elles sont affichées.
+     */
+    val coverage: StateFlow<CoverageState> = showCoverage
+        .flatMapLatest { shown ->
+            if (!shown) return@flatMapLatest flowOf(CoverageState.Hidden)
+            plan
+                .mapLatest { state ->
+                    val ready = state as? PlanState.Ready ?: return@mapLatest CoverageState.Hidden
+                    withContext(mapDispatcher) {
+                        analyzeCoverage(ready.plan, ready.map.measurements.map { it.point }, ready.walls)
+                    }?.let { CoverageState.Shown(it) } ?: CoverageState.Hidden
+                }
+                .onStart { emit(CoverageState.Computing) }
+                .catch { error ->
+                    logger.log(Level.WARNING, "Unable to analyse the coverage", error)
+                    emit(CoverageState.Hidden)
+                }
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, CoverageState.Hidden)
 
     val position: StateFlow<PositionState> = positionSource.position
         .catch { error ->
@@ -400,6 +438,11 @@ class MapScanViewModel(
         val ready = plan.value as? PlanState.Ready ?: return
         if (mutableNetScan.value is NetScanState.Running || mutableWallEditor.value != null || !ready.plan.contains(point)) return
         mutableManualPosition.value = point
+    }
+
+    /** Mode manuel : affiche ou masque les zones à mesurer. */
+    fun toggleCoverage() {
+        showCoverage.update { !it }
     }
 
     /** Mode manuel : commence le tracé des murs, une fois l'échelle réglée et hors scan réseau. */

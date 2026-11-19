@@ -52,6 +52,18 @@ class VisitReportTest {
         assertTrue(map.heatmap.values.values.any { !it.measured })
     }
 
+    @Test fun theWallsDrawnOnThePlanStopItsHeatmapLikeOnScreen() {
+        // Plan de 20 × 10 m ; mur vertical à 10,25 m sur toute la hauteur, scan à 9 m.
+        val wall = PlanWall(1, PlanPoint(0.5125f, 0f), PlanPoint(0.5125f, 1f))
+        val scans = listOf(scan(1, 1, SignalLevel.HIGH, planPosition = PlanPoint(0.45f, 0.5f)))
+        val beyond = GridCell(22, 10)
+        assertTrue(checkNotNull(buildVisitReport(visit, scans, 999, plan).planMap).heatmap.valueAt(beyond) != null)
+
+        val walled = buildVisitReport(visit, scans, 999, plan, walls = listOf(wall))
+        assertEquals(listOf(wall), walled.walls)
+        assertNull(checkNotNull(walled.planMap).heatmap.valueAt(beyond))
+    }
+
     @Test fun scansOfTheLatestRecordingArePlacedOnItsMap() {
         val recording = SavedRecording(9, 0, listOf(listOf(FloorPoint(0f, 0f), FloorPoint(4f, 0f))), emptyList())
         val report = buildVisitReport(

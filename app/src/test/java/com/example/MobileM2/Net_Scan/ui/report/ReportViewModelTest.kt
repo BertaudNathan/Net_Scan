@@ -14,6 +14,8 @@ import com.example.MobileM2.Net_Scan.domain.NetScanRepository
 import com.example.MobileM2.Net_Scan.domain.NetScanSummary
 import com.example.MobileM2.Net_Scan.domain.NetworkTechnology
 import com.example.MobileM2.Net_Scan.domain.PlanMeasurement
+import com.example.MobileM2.Net_Scan.domain.PlanPoint
+import com.example.MobileM2.Net_Scan.domain.PlanWall
 import com.example.MobileM2.Net_Scan.domain.ReportGenerator
 import com.example.MobileM2.Net_Scan.domain.SignalLevel
 import com.example.MobileM2.Net_Scan.domain.Visit
@@ -68,6 +70,16 @@ class ReportViewModelTest {
         val state = viewModel().state.value as ReportState.Ready
         assertEquals(plan, state.report.plan)
         assertNull(state.report.recording)
+    }
+
+    @Test fun aManualVisitIncludesTheWallsDrawnOnItsPlan() = runTest(dispatcher) {
+        visits.visit.value = visits.visit.value?.copy(mode = MappingMode.MANUAL)
+        plans.plan.value = FloorPlan(VISIT_ID, "plan.png", 200, 100, 0.1f)
+        val wall = PlanWall(1, PlanPoint(0.5f, 0f), PlanPoint(0.5f, 1f))
+        plans.walls.value = listOf(wall)
+        val state = viewModel().state.value as ReportState.Ready
+        assertEquals(listOf(wall), state.report.walls)
+        assertEquals(listOf(wall), generator.generated.single().walls)
     }
 
     @Test fun anArCoreVisitIncludesItsLatestRecording() = runTest(dispatcher) {
@@ -159,6 +171,10 @@ class ReportViewModelTest {
         override suspend fun savePlan(plan: FloorPlan) = Unit
         override suspend fun setScale(visitId: Long, metersPerPixel: Float) = Unit
         override fun observePlanMeasurements(visitId: Long): Flow<List<PlanMeasurement>> = MutableStateFlow(emptyList())
+        val walls = MutableStateFlow<List<PlanWall>>(emptyList())
+        override fun observeWalls(visitId: Long): Flow<List<PlanWall>> = walls
+        override suspend fun addWall(visitId: Long, start: PlanPoint, end: PlanPoint) = 0L
+        override suspend fun deleteWall(id: Long) = Unit
     }
 
     private class FakeRecordingRepository : RecordingRepository {
