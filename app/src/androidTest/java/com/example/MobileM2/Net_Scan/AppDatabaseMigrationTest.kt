@@ -7,9 +7,11 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.MobileM2.Net_Scan.data.AppDatabase
 import com.example.MobileM2.Net_Scan.data.RoomNetScanRepository
+import com.example.MobileM2.Net_Scan.data.RoomFloorPlanRepository
 import com.example.MobileM2.Net_Scan.data.RoomRecordingRepository
 import com.example.MobileM2.Net_Scan.data.RoomThemeRepository
 import com.example.MobileM2.Net_Scan.data.VisitEntity
+import com.example.MobileM2.Net_Scan.domain.FloorPlan
 import com.example.MobileM2.Net_Scan.domain.FloorPoint
 import com.example.MobileM2.Net_Scan.domain.GridCell
 import com.example.MobileM2.Net_Scan.domain.MapMeasurement
@@ -108,6 +110,8 @@ class AppDatabaseMigrationTest {
             ),
         )
         val database = open()
+        // Les visites d'avant le choix du mode sont des visites ARCore.
+        assertEquals("ARCORE", database.visitDao().observeAll().first().single().mappingMode)
         val old = database.netScanDao().observeForVisit(9).first().single()
         assertEquals("LOW", old.level)
         assertNull(old.recordingId)
@@ -121,6 +125,10 @@ class AppDatabaseMigrationTest {
         )
         recordings.saveCells(recordingId, mapOf(GridCell(1, 2) to 4f, GridCell(0, 0) to -1f))
         recordings.saveCells(recordingId, mapOf(GridCell(0, 0) to -2f))
+        val plans = RoomFloorPlanRepository(database.floorPlanDao(), database.netScanDao())
+        plans.savePlan(FloorPlan(9, "plan.png", 800, 600, null))
+        plans.setScale(9, 0.02f)
+        assertEquals(FloorPlan(9, "plan.png", 800, 600, 0.02f), plans.observePlan(9).first())
         val latest = recordings.observeLatest(9).first()!!
         assertEquals(mapOf(GridCell(1, 2) to 4f, GridCell(0, 0) to -2f), latest.cells)
         assertEquals(listOf(listOf(FloorPoint(0f, 0f), FloorPoint(1f, 0f))), latest.segments)

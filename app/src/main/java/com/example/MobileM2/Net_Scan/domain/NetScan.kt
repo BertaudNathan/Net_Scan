@@ -25,8 +25,9 @@ data class NetScanSummary(
 )
 
 /**
- * Scan réseau terminé, rattaché à une visite. [position] le place sur la carte de l'enregistrement
- * [recordingId] ; elle est absente si le suivi ARCore n'a donné aucune position pendant le scan.
+ * Scan réseau terminé, rattaché à une visite. En mode ARCore, [position] le place sur la carte de
+ * l'enregistrement [recordingId] ; elle est absente si le suivi n'a donné aucune position pendant le
+ * scan. En mode manuel, [planPosition] est l'endroit du plan où la personne s'est placée.
  */
 data class NetScan(
     val visitId: Long,
@@ -37,6 +38,7 @@ data class NetScan(
     val summary: NetScanSummary,
     val recordingId: Long? = null,
     val position: FloorPoint? = null,
+    val planPosition: PlanPoint? = null,
 )
 
 interface NetScanRepository {

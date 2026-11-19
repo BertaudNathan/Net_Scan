@@ -2,13 +2,21 @@ package com.example.MobileM2.Net_Scan
 
 import android.Manifest
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Color
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -23,11 +31,14 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
 import com.example.MobileM2.Net_Scan.data.AppDatabase
+import com.example.MobileM2.Net_Scan.data.RoomFloorPlanRepository
 import com.example.MobileM2.Net_Scan.data.RoomNetScanRepository
 import com.example.MobileM2.Net_Scan.data.RoomRecordingRepository
 import com.example.MobileM2.Net_Scan.data.RoomVisitRepository
 import com.example.MobileM2.Net_Scan.data.position.SimulatedPositionSource
 import com.example.MobileM2.Net_Scan.data.signal.SimulatedSignalSource
+import com.example.MobileM2.Net_Scan.domain.FloorPlan
+import com.example.MobileM2.Net_Scan.domain.MappingMode
 import com.example.MobileM2.Net_Scan.domain.PositionSource
 import com.example.MobileM2.Net_Scan.domain.PositionState
 import com.example.MobileM2.Net_Scan.domain.PositioningUnavailable
@@ -46,6 +57,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
 import kotlin.math.abs
 
 @RunWith(AndroidJUnit4::class)
@@ -67,8 +79,23 @@ class MapScanScreenTest {
     @Before fun setup() {
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         visitId = runBlocking {
-            RoomVisitRepository(db.visitDao()).createVisit("Entrepôt Nord", "", "")
+            RoomVisitRepository(db.visitDao()).createVisit("Entrepôt Nord", "", "", MappingMode.ARCORE)
             db.visitDao().observeAll().first().single().id
+        }
+    }
+
+    /** Visite en mode manuel avec un plan de 10 × 5 m (200 × 100 pixels), déjà à l'échelle si [scaled]. */
+    private fun manualVisitWithPlan(scaled: Boolean) {
+        visitId = runBlocking {
+            RoomVisitRepository(db.visitDao()).createVisit("Hall B", "", "", MappingMode.MANUAL)
+            db.visitDao().observeAll().first().first { it.building == "Hall B" }.id
+        }
+        val file = File(context.cacheDir, "plan-test.png")
+        val bitmap = Bitmap.createBitmap(200, 100, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.WHITE) }
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        runBlocking {
+            RoomFloorPlanRepository(db.floorPlanDao(), db.netScanDao())
+                .savePlan(FloorPlan(visitId, file.absolutePath, 200, 100, if (scaled) 0.05f else null))
         }
     }
 
@@ -83,6 +110,8 @@ class MapScanScreenTest {
             visitRepository = RoomVisitRepository(db.visitDao()),
             netScanRepository = RoomNetScanRepository(db.netScanDao()),
             recordingRepository = RoomRecordingRepository(db.recordingDao(), db.netScanDao()),
+            planRepository = RoomFloorPlanRepository(db.floorPlanDao(), db.netScanDao()),
+            planImporter = { _, _ -> error("No import in this test") },
             signalSource = source,
             positionSource = positions,
         )
@@ -91,15 +120,17 @@ class MapScanScreenTest {
                 MapScanScreen(viewModel = viewModel, onClose = { closed = true }, cameraPreview = { Box(it) })
             }
         }
-        waitForText("Entrepôt Nord")
+        waitForText(if (visitName.isEmpty()) "Entrepôt Nord" else visitName)
     }
+
+    private var visitName = ""
 
     private fun waitForText(value: String, timeout: Long = 10_000) = compose.waitUntil(timeout) {
         compose.onAllNodesWithText(value).fetchSemanticsNodes().isNotEmpty()
     }
 
     /** Début du texte, avant le premier argument, d'une ressource à paramètres. */
-    private fun prefix(id: Int) = text(id, "").substringBefore(",").trim()
+    private fun prefix(id: Int) = text(id, "", "").substringBefore(",").trim()
 
     private fun waitForDescription(start: String, timeout: Long = 10_000) {
         val matcher = SemanticsMatcher("description starting with $start") { node ->
@@ -201,6 +232,56 @@ class MapScanScreenTest {
         compose.waitUntil(10_000) {
             compose.onAllNodes(hasText(lastRecording, substring = true)).fetchSemanticsNodes().isNotEmpty()
         }
+    }
+
+    @Test fun aManualVisitAsksForAPlan() {
+        visitId = runBlocking {
+            RoomVisitRepository(db.visitDao()).createVisit("Hall B", "", "", MappingMode.MANUAL)
+            db.visitDao().observeAll().first().first { it.building == "Hall B" }.id
+        }
+        visitName = "Hall B"
+        showScreen()
+        waitForText(text(R.string.plan_import))
+        compose.onNodeWithText(text(R.string.plan_missing_title)).assertIsDisplayed()
+        compose.onAllNodesWithContentDescription(text(R.string.record_start)).assertCountEquals(0)
+    }
+
+    @Test fun aNewPlanAsksForItsScale() {
+        manualVisitWithPlan(scaled = false)
+        visitName = "Hall B"
+        showScreen()
+        waitForText(text(R.string.plan_scale_first))
+    }
+
+    @Test fun onAPlanTheScanIsPlacedWhereThePersonTapped() {
+        manualVisitWithPlan(scaled = true)
+        visitName = "Hall B"
+        showScreen()
+        waitForText(text(R.string.plan_place_yourself))
+        val scan = hasText(text(R.string.net_scan_start)) and hasClickAction()
+        compose.onNode(scan).assertIsNotEnabled()
+
+        waitForDescription(prefix(R.string.plan_description))
+        compose.onNode(descriptionStartingWith(prefix(R.string.plan_description))).performTouchInput { click(center) }
+        waitForText(text(R.string.plan_position_set))
+        compose.onNode(scan).assertIsEnabled()
+
+        compose.onNodeWithText(text(R.string.net_scan_mode_timer, 30)).performClick()
+        compose.onNodeWithText(text(R.string.net_scan_mode_timer_item, 20)).performClick()
+        compose.onNode(scan).performClick()
+        waitForText(text(R.string.net_scan_saved), timeout = 30_000)
+
+        val saved = runBlocking { db.netScanDao().observeForVisit(visitId).first() }.single()
+        assertNotNull(saved.planX)
+        assertTrue(saved.planX!! in 0f..1f && saved.planY!! in 0f..1f)
+        assertEquals(null, saved.recordingId)
+        compose.onNodeWithText(text(R.string.close)).performClick()
+        // La personne va bouger : la mesure suivante demande une nouvelle position.
+        waitForText(text(R.string.plan_place_yourself))
+    }
+
+    private fun descriptionStartingWith(start: String) = SemanticsMatcher("description starting with $start") { node ->
+        node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty().any { it.startsWith(start) }
     }
 
     @Test fun unavailablePositioningIsExplainedAndScansStayPossible() {

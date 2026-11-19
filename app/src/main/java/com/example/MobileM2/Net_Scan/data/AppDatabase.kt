@@ -1,6 +1,7 @@
 package com.example.MobileM2.Net_Scan.data
 
 import android.content.Context
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -23,7 +24,42 @@ data class VisitEntity(
     val client: String,
     val address: String,
     val createdAt: Long,
+    /** ARCORE ou MANUAL ; les visites d'avant ce choix sont en ARCore. */
+    @ColumnInfo(defaultValue = "ARCORE") val mappingMode: String = "ARCORE",
 )
+
+/** Plan importé d'une visite en mode manuel ; l'image est dans le stockage privé de l'application. */
+@Entity(
+    tableName = "floor_plans",
+    foreignKeys = [
+        ForeignKey(
+            entity = VisitEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["visitId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+)
+data class FloorPlanEntity(
+    @PrimaryKey val visitId: Long,
+    val imagePath: String,
+    val widthPx: Int,
+    val heightPx: Int,
+    /** Null tant que l'échelle n'est pas réglée. */
+    val metersPerPixel: Float?,
+)
+
+@Dao
+interface FloorPlanDao {
+    @Query("SELECT * FROM floor_plans WHERE visitId = :visitId")
+    fun observe(visitId: Long): Flow<FloorPlanEntity?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun save(plan: FloorPlanEntity)
+
+    @Query("UPDATE floor_plans SET metersPerPixel = :metersPerPixel WHERE visitId = :visitId")
+    suspend fun setScale(visitId: Long, metersPerPixel: Float)
+}
 
 @Dao
 interface VisitDao {
@@ -165,6 +201,9 @@ data class NetScanEntity(
     /** Position sur la carte de l'enregistrement, absente si le suivi n'en a donné aucune. */
     val mapX: Float? = null,
     val mapZ: Float? = null,
+    /** Mode manuel : position sur le plan, en fraction de sa largeur et de sa hauteur. */
+    val planX: Float? = null,
+    val planY: Float? = null,
 )
 
 @Dao
@@ -180,6 +219,12 @@ interface NetScanDao {
             "ORDER BY startedAt, id",
     )
     fun observePlaced(recordingId: Long): Flow<List<NetScanEntity>>
+
+    @Query(
+        "SELECT * FROM net_scans WHERE visitId = :visitId AND planX IS NOT NULL AND planY IS NOT NULL " +
+            "ORDER BY startedAt, id",
+    )
+    fun observePlacedOnPlan(visitId: Long): Flow<List<NetScanEntity>>
 }
 
 @Entity(tableName = "app_preferences")
@@ -202,7 +247,8 @@ interface PreferencesDao {
  * différente (préférences d'un côté, visites renommées et scans réseau de l'autre). La version 3
  * réunit les deux ; sa migration accepte l'une ou l'autre des versions 2. Version 4 : enregistrements
  * de parcours ARCore et position des scans réseau sur leur carte. Version 5 : carte d'occupation
- * (sol vu, murs) de chaque enregistrement.
+ * (sol vu, murs) de chaque enregistrement. Version 6 : mode de la visite (ARCore ou manuel), plan
+ * importé et position des scans sur ce plan.
  */
 @Database(
     entities = [
@@ -212,8 +258,9 @@ interface PreferencesDao {
         RecordingEntity::class,
         RecordingPointEntity::class,
         RecordingCellEntity::class,
+        FloorPlanEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -221,6 +268,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun netScanDao(): NetScanDao
     abstract fun preferencesDao(): PreferencesDao
     abstract fun recordingDao(): RecordingDao
+    abstract fun floorPlanDao(): FloorPlanDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -276,7 +324,21 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `visits` ADD COLUMN `mappingMode` TEXT NOT NULL DEFAULT 'ARCORE'")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `floor_plans` (`visitId` INTEGER NOT NULL, `imagePath` TEXT NOT NULL, " +
+                        "`widthPx` INTEGER NOT NULL, `heightPx` INTEGER NOT NULL, `metersPerPixel` REAL, " +
+                        "PRIMARY KEY(`visitId`), FOREIGN KEY(`visitId`) REFERENCES `visits`(`id`) " +
+                        "ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+                db.execSQL("ALTER TABLE `net_scans` ADD COLUMN `planX` REAL")
+                db.execSQL("ALTER TABLE `net_scans` ADD COLUMN `planY` REAL")
+            }
+        }
+
+        val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
 
         private const val CREATE_PREFERENCES =
             "CREATE TABLE IF NOT EXISTS `app_preferences` (`id` INTEGER NOT NULL, `theme` TEXT NOT NULL, PRIMARY KEY(`id`))"

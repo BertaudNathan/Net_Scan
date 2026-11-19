@@ -85,6 +85,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.MobileM2.Net_Scan.R
 import com.example.MobileM2.Net_Scan.domain.HeatCell
+import com.example.MobileM2.Net_Scan.domain.MappingMode
 import com.example.MobileM2.Net_Scan.domain.NetScanMode
 import com.example.MobileM2.Net_Scan.domain.NetScanSummary
 import com.example.MobileM2.Net_Scan.domain.NetworkTechnology
@@ -129,6 +130,10 @@ fun MapScanScreen(
     val recording by viewModel.recording.collectAsStateWithLifecycle()
     val map by viewModel.map.collectAsStateWithLifecycle()
     val position by viewModel.position.collectAsStateWithLifecycle()
+    val plan by viewModel.plan.collectAsStateWithLifecycle()
+    val planImport by viewModel.planImport.collectAsStateWithLifecycle()
+    val manualPosition by viewModel.manualPosition.collectAsStateWithLifecycle()
+    val manual = (visit as? VisitState.Loaded)?.visit?.mode == MappingMode.MANUAL
     var showLeave by rememberSaveable { mutableStateOf(false) }
     val busy = recording is RecordingState.Recording || netScan is NetScanState.Running
     val context = LocalContext.current
@@ -148,6 +153,10 @@ fun MapScanScreen(
     val startNetScan = {
         if (hasSignalPermissions(context)) viewModel.startNetScan() else permissionLauncher.launch(SIGNAL_PERMISSIONS)
     }
+    // Le plan est copié aussitôt dans l'application : aucun accès durable au fichier d'origine.
+    val planPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { viewModel.importPlan(it.toString()) }
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -163,14 +172,38 @@ fun MapScanScreen(
                 title = (visit as? VisitState.Loaded)?.visit?.building,
                 operator = operator,
                 isSimulated = viewModel.isSimulated,
-                cameraPreview = cameraPreview,
+                // En mode manuel, la caméra ne sert à rien : pas d'aperçu, pas de permission demandée.
+                cameraPreview = cameraPreview.takeUnless { manual || visit !is VisitState.Loaded },
                 onClose = requestClose,
             )
             when (val state = visit) {
                 VisitState.Loading -> CenteredMessage(stringResource(R.string.visit_loading), Modifier.weight(1f), loading = true)
                 VisitState.Missing -> CenteredMessage(stringResource(R.string.visit_missing), Modifier.weight(1f), onClose = onClose)
                 VisitState.Error -> CenteredMessage(stringResource(R.string.visit_error), Modifier.weight(1f), onClose = onClose)
-                is VisitState.Loaded -> MapArea(
+                is VisitState.Loaded -> if (manual) {
+                    ManualMapArea(
+                        plan = plan,
+                        importStatus = planImport,
+                        position = manualPosition,
+                        mode = mode,
+                        netScan = netScan,
+                        actions = MapActions(
+                            startNetScan = startNetScan,
+                            selectMode = viewModel::selectMode,
+                            cancel = viewModel::cancelNetScan,
+                            finish = viewModel::finishNetScan,
+                            dismiss = viewModel::dismissNetScan,
+                            retrySave = viewModel::retrySave,
+                            toggleRecording = viewModel::toggleRecording,
+                        ),
+                        planActions = PlanActions(
+                            importPlan = { planPicker.launch(arrayOf("image/*", "application/pdf")) },
+                            placeHere = viewModel::placeHere,
+                            setScale = viewModel::setScale,
+                        ),
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                    )
+                } else MapArea(
                     map = map,
                     position = position,
                     mode = mode,
@@ -211,7 +244,7 @@ fun MapScanScreen(
     }
 }
 
-private class MapActions(
+internal class MapActions(
     val startNetScan: () -> Unit,
     val selectMode: (NetScanMode) -> Unit,
     val cancel: () -> Unit,
@@ -226,18 +259,23 @@ private fun Header(
     title: String?,
     operator: OperatorStatus,
     isSimulated: Boolean,
-    cameraPreview: @Composable (Modifier) -> Unit,
+    cameraPreview: (@Composable (Modifier) -> Unit)?,
     onClose: () -> Unit,
 ) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        Box(
-            modifier = Modifier.size(Design.previewWidth, Design.previewHeight)
-                .clip(Design.previewShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .border(1.dp, MaterialTheme.colorScheme.outline, Design.previewShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            cameraPreview(Modifier.fillMaxSize())
+        if (cameraPreview != null) {
+            Box(
+                modifier = Modifier.size(Design.previewWidth, Design.previewHeight)
+                    .clip(Design.previewShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .border(1.dp, MaterialTheme.colorScheme.outline, Design.previewShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                cameraPreview(Modifier.fillMaxSize())
+            }
+        } else {
+            // Même largeur que la croix : le titre reste centré.
+            Spacer(Modifier.size(Design.touchTarget))
         }
         Column(
             modifier = Modifier.weight(1f)
@@ -387,7 +425,7 @@ private fun BottomControls(
 }
 
 @Composable
-private fun ModeSelector(mode: NetScanMode, onSelect: (NetScanMode) -> Unit) {
+internal fun ModeSelector(mode: NetScanMode, onSelect: (NetScanMode) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         SecondaryButton(onClick = { expanded = true }) {
@@ -426,7 +464,7 @@ private fun ModeItem(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun NetScanPanel(state: NetScanState, actions: MapActions) {
+internal fun NetScanPanel(state: NetScanState, actions: MapActions) {
     Surface(
         modifier = Modifier.widthIn(max = Design.overlayWidth).fillMaxWidth(),
         shape = Design.cardShape,
@@ -684,7 +722,7 @@ private fun MapMessage(map: MapState, position: PositionState) {
 }
 
 @Composable
-private fun MessageCard(title: String?, body: String) {
+internal fun MessageCard(title: String?, body: String) {
     Surface(
         modifier = Modifier.widthIn(max = Design.overlayWidth),
         shape = Design.cardShape,
@@ -739,7 +777,7 @@ private fun StatusChips(map: MapState, position: PositionState, recording: Recor
 }
 
 @Composable
-private fun StatusChip(text: String, warning: Boolean) {
+internal fun StatusChip(text: String, warning: Boolean) {
     Surface(
         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
         shape = Design.badgeShape,
@@ -756,20 +794,23 @@ private fun StatusChip(text: String, warning: Boolean) {
 }
 
 @Composable
-private fun MapLegendButton() {
+internal fun MapLegendButton(forPlan: Boolean = false) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { expanded = true }, modifier = Modifier.size(Design.touchTarget)) {
             Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.map_legend))
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            MapLegend(Modifier.widthIn(max = Design.legendWidth).padding(horizontal = Design.spaceMedium, vertical = Design.spaceSmall))
+            MapLegend(
+                Modifier.widthIn(max = Design.legendWidth).padding(horizontal = Design.spaceMedium, vertical = Design.spaceSmall),
+                forPlan = forPlan,
+            )
         }
     }
 }
 
 @Composable
-private fun MapLegend(modifier: Modifier = Modifier) {
+internal fun MapLegend(modifier: Modifier = Modifier, forPlan: Boolean = false) {
     val colors = MaterialTheme.colorScheme
     val estimated = HeatCellPreview.estimated
     Column(modifier, verticalArrangement = Arrangement.spacedBy(Design.spaceSmall)) {
@@ -782,14 +823,26 @@ private fun MapLegend(modifier: Modifier = Modifier) {
         listOf(SignalLevel.HIGH, SignalLevel.MEDIUM, SignalLevel.LOW, SignalLevel.NONE).forEach { level ->
             LegendRow(stringResource(levelName(level))) { Swatch(levelColors(level).container) }
         }
-        LegendRow(stringResource(R.string.legend_estimated)) { Swatch(MapColors.cell(colors.surface, estimated)) }
-        LegendRow(stringResource(R.string.legend_unexplored)) { HatchSwatch() }
-        LegendRow(stringResource(R.string.legend_obstacle)) { Swatch(MapColors.obstacle(colors.surface, colors.onSurface)) }
+        LegendRow(stringResource(if (forPlan) R.string.legend_plan_estimated else R.string.legend_estimated)) {
+            Swatch(MapColors.cell(colors.surface, estimated))
+        }
+        if (!forPlan) {
+            LegendRow(stringResource(R.string.legend_unexplored)) { HatchSwatch() }
+            LegendRow(stringResource(R.string.legend_obstacle)) { Swatch(MapColors.obstacle(colors.surface, colors.onSurface)) }
+        }
         LegendRow(stringResource(R.string.legend_measurement)) {
             Box(Modifier.size(14.dp).background(SignalColors.medium.container, CircleShape).border(2.dp, colors.onSurface, CircleShape))
         }
-        LegendRow(stringResource(R.string.legend_position)) {
-            Box(Modifier.size(14.dp).background(colors.onSurface, CircleShape))
+        if (forPlan) {
+            LegendRow(stringResource(R.string.legend_plan_position)) {
+                Box(Modifier.size(16.dp).border(3.dp, colors.onSurface, CircleShape), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(5.dp).background(colors.onSurface, CircleShape))
+                }
+            }
+        } else {
+            LegendRow(stringResource(R.string.legend_position)) {
+                Box(Modifier.size(14.dp).background(colors.onSurface, CircleShape))
+            }
         }
     }
 }
@@ -1013,6 +1066,7 @@ private fun problemMessage(problem: NetScanProblem): Int = when (problem) {
     NetScanProblem.LOCATION_DISABLED -> R.string.problem_location
     NetScanProblem.NO_DATA -> R.string.problem_no_data
     NetScanProblem.SIGNAL_ERROR -> R.string.problem_signal_error
+    NetScanProblem.POSITION_REQUIRED -> R.string.problem_position_required
 }
 
 private fun settingsIntent(context: Context, problem: NetScanProblem): Intent? = when (problem) {

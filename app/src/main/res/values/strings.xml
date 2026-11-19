@@ -1,4 +1,4 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="fr">
     <string name="app_name">Net Scan</string>
     <string name="brand_kicker">DIAGNOSTIC RÉSEAU</string>
     <string name="scans_title">Scans bâtiments</string>
@@ -43,6 +43,13 @@
     <string name="theme_save_error">Impossible d’enregistrer le thème. Réessayez.</string>
 
     <string name="open_visit">Ouvrir la visite</string>
+    <string name="mapping_mode_title">Mode de cartographie</string>
+    <string name="mapping_mode_arcore">ARCore</string>
+    <string name="mapping_mode_arcore_description">La carte de la pièce se dessine pendant que vous la filmez.</string>
+    <string name="mapping_mode_manual">Plan manuel</string>
+    <string name="mapping_mode_manual_description">Importez un plan, puis touchez votre position avant chaque scan réseau.</string>
+    <string name="visit_mode_arcore">Mode ARCore</string>
+    <string name="visit_mode_manual">Mode plan manuel</string>
 
     <!-- Écran d'une visite : aperçu, carte, scan réseau, enregistrement -->
     <string name="map_scan_close">Fermer la visite</string>
@@ -94,6 +101,7 @@
     <string name="map_description">Carte du parcours vue de dessus, %1$s.</string>
     <plurals name="map_measurements">
         <item quantity="one">%1$d scan réseau placé</item>
+        <item quantity="many">%1$d de scans réseau placés</item>
         <item quantity="other">%1$d scans réseau placés</item>
     </plurals>
     <string name="map_measurements_detail">%1$s (%2$s)</string>
@@ -105,6 +113,30 @@
     <string name="legend_obstacle">Plein foncé : mur ou obstacle vu par la caméra</string>
     <string name="legend_measurement">Rond cerclé : scan réseau</string>
     <string name="legend_position">Point et flèche : votre position</string>
+    <string name="legend_plan_estimated">Couleur atténuée : estimé d’après les scans voisins, à vol d’oiseau</string>
+    <string name="legend_plan_position">Cible : votre position pour le prochain scan</string>
+
+    <!-- Mode manuel : plan importé -->
+    <string name="plan_missing_title">Aucun plan</string>
+    <string name="plan_missing_body">Importez le plan du bâtiment (image ou PDF), par exemple une photo du plan d’évacuation. Il reste sur cet appareil.</string>
+    <string name="plan_import">Importer un plan</string>
+    <string name="plan_importing">Import du plan…</string>
+    <string name="plan_import_failed">Ce fichier n’a pas pu être importé. Essayez une autre image ou un autre PDF.</string>
+    <string name="plan_error">Impossible d’afficher le plan.</string>
+    <string name="plan_scale_first">Échelle : touchez une extrémité d’une longueur connue (mur, porte)</string>
+    <string name="plan_scale_second">Touchez maintenant l’autre extrémité</string>
+    <string name="plan_scale_title">Longueur réelle</string>
+    <string name="plan_scale_body">Distance entre les deux points touchés, en mètres. Plus elle est grande, plus l’échelle est précise.</string>
+    <string name="plan_scale_field">Longueur (m)</string>
+    <string name="plan_scale_invalid">Entrez une longueur supérieure à 0, entre deux points assez éloignés.</string>
+    <string name="plan_scale_validate">Valider</string>
+    <string name="plan_scale_restart">Recommencer</string>
+    <string name="plan_scale_adjust">Échelle</string>
+    <string name="plan_place_yourself">Touchez votre position sur le plan</string>
+    <string name="plan_position_set">Position choisie : lancez le scan réseau</string>
+    <string name="plan_position_marked">Votre position est marquée par une cible.</string>
+    <string name="plan_position_missing">Touchez le plan pour indiquer votre position.</string>
+    <string name="plan_description">Plan de la visite, %1$s. %2$s Pincez pour zoomer, touchez deux fois pour revenir à la vue d’ensemble.</string>
 
     <string name="record_start">Démarrer l’enregistrement</string>
     <string name="record_stop">Arrêter l’enregistrement</string>
@@ -132,6 +164,7 @@
     <string name="net_scan_not_placed">Mesure non placée sur la carte : aucune position n’était disponible pendant le scan.</string>
     <plurals name="net_scan_result_basis">
         <item quantity="one">Médiane de %1$d mesure sur %2$s</item>
+        <item quantity="many">Médiane de %1$d de mesures sur %2$s</item>
         <item quantity="other">Médiane de %1$d mesures sur %2$s</item>
     </plurals>
 
@@ -160,6 +193,7 @@
     <string name="problem_location">Activez la localisation du téléphone : Android l’exige pour lire les informations de la cellule.</string>
     <string name="problem_no_data">Aucune donnée radio reçue pendant le scan.</string>
     <string name="problem_signal_error">La lecture du réseau a échoué.</string>
+    <string name="problem_position_required">Touchez votre position sur le plan avant de lancer le scan réseau.</string>
     <string name="open_settings">Ouvrir les réglages</string>
 
     <string name="leave_visit_title">Quitter la visite ?</string>

@@ -3,9 +3,12 @@ package com.example.MobileM2.Net_Scan.ui.mapscan
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.MobileM2.Net_Scan.domain.FloorMap
+import com.example.MobileM2.Net_Scan.domain.FloorPlan
+import com.example.MobileM2.Net_Scan.domain.FloorPlanRepository
 import com.example.MobileM2.Net_Scan.domain.FloorPose
 import com.example.MobileM2.Net_Scan.domain.LiveMapping
 import com.example.MobileM2.Net_Scan.domain.MapMeasurement
+import com.example.MobileM2.Net_Scan.domain.MappingMode
 import com.example.MobileM2.Net_Scan.domain.MapRules
 import com.example.MobileM2.Net_Scan.domain.NetScan
 import com.example.MobileM2.Net_Scan.domain.NetScanMode
@@ -13,6 +16,8 @@ import com.example.MobileM2.Net_Scan.domain.NetScanRepository
 import com.example.MobileM2.Net_Scan.domain.NetScanSummary
 import com.example.MobileM2.Net_Scan.domain.OccupancyMap
 import com.example.MobileM2.Net_Scan.domain.OperatorStatus
+import com.example.MobileM2.Net_Scan.domain.PlanImporter
+import com.example.MobileM2.Net_Scan.domain.PlanPoint
 import com.example.MobileM2.Net_Scan.domain.PositionSource
 import com.example.MobileM2.Net_Scan.domain.PositionState
 import com.example.MobileM2.Net_Scan.domain.PositioningUnavailable
@@ -25,6 +30,8 @@ import com.example.MobileM2.Net_Scan.domain.SignalSource
 import com.example.MobileM2.Net_Scan.domain.Visit
 import com.example.MobileM2.Net_Scan.domain.VisitRepository
 import com.example.MobileM2.Net_Scan.domain.medianPoint
+import com.example.MobileM2.Net_Scan.domain.onPlan
+import com.example.MobileM2.Net_Scan.domain.scaleFrom
 import com.example.MobileM2.Net_Scan.domain.summarize
 import java.util.logging.Level
 import java.util.logging.Logger
@@ -77,7 +84,25 @@ sealed interface RecordingState {
 }
 
 enum class NetScanProblem {
-    PERMISSION_DENIED, NO_TELEPHONY, NO_SIM, AIRPLANE_MODE, LOCATION_DISABLED, NO_DATA, SIGNAL_ERROR
+    PERMISSION_DENIED, NO_TELEPHONY, NO_SIM, AIRPLANE_MODE, LOCATION_DISABLED, NO_DATA, SIGNAL_ERROR, POSITION_REQUIRED
+}
+
+/** Import d'un plan en mode manuel. */
+enum class ImportStatus { IDLE, IMPORTING, FAILED }
+
+/** Plan d'une visite en mode manuel. */
+sealed interface PlanState {
+    data object Loading : PlanState
+
+    /** Aucun plan : il faut en importer un. */
+    data object Missing : PlanState
+
+    /** Plan importé, échelle à régler avant de pouvoir mesurer. */
+    data class NeedsScale(val plan: FloorPlan) : PlanState
+
+    data class Ready(val plan: FloorPlan, val map: FloorMap) : PlanState
+
+    data object Error : PlanState
 }
 
 enum class SaveState { SAVING, SAVED, FAILED }
@@ -127,6 +152,8 @@ class MapScanViewModel(
     visitRepository: VisitRepository,
     private val netScanRepository: NetScanRepository,
     private val recordingRepository: RecordingRepository,
+    private val planRepository: FloorPlanRepository,
+    private val planImporter: PlanImporter,
     private val signalSource: SignalSource,
     private val positionSource: PositionSource,
     private val clock: () -> Long = System::currentTimeMillis,
@@ -144,6 +171,10 @@ class MapScanViewModel(
     private val correctedPose = MutableStateFlow<FloorPose?>(null)
     private var scanStartedAt = 0L
     private var scanJob: Job? = null
+    private val mutableManualPosition = MutableStateFlow<PlanPoint?>(null)
+    private val mutableImport = MutableStateFlow(ImportStatus.IDLE)
+    /** Position sur le plan retenue au lancement du scan réseau en cours (mode manuel). */
+    private var scanPlanPosition: PlanPoint? = null
     private var active: ActiveRecording? = null
     /** Enregistrement en cours au lancement du scan réseau, pour placer son résultat. */
     private var scanRecording: ActiveRecording? = null
@@ -168,6 +199,31 @@ class MapScanViewModel(
             emit(OperatorStatus.Unavailable)
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, OperatorStatus.Unknown)
+
+    val mappingMode: StateFlow<MappingMode?> = visit
+        .map { (it as? VisitState.Loaded)?.visit?.mode }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** Mode manuel : position choisie sur le plan pour le prochain scan réseau. */
+    val manualPosition: StateFlow<PlanPoint?> = mutableManualPosition.asStateFlow()
+    val planImport: StateFlow<ImportStatus> = mutableImport.asStateFlow()
+
+    val plan: StateFlow<PlanState> = combine(
+        planRepository.observePlan(visitId),
+        planRepository.observePlanMeasurements(visitId),
+    ) { plan, measurements ->
+        when {
+            plan == null -> PlanState.Missing
+            plan.metersPerPixel == null -> PlanState.NeedsScale(plan)
+            else -> FloorMap.onPlan(plan, measurements)?.let { PlanState.Ready(plan, it) } ?: PlanState.NeedsScale(plan)
+        }
+    }
+        .flowOn(mapDispatcher)
+        .catch { error ->
+            logger.log(Level.WARNING, "Unable to load the floor plan", error)
+            emit(PlanState.Error)
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, PlanState.Loading)
 
     val position: StateFlow<PositionState> = positionSource.position
         .catch { error ->
@@ -207,10 +263,20 @@ class MapScanViewModel(
             mutableNetScan.value = NetScanState.Unavailable(it)
             return
         }
+        if (mappingMode.value == MappingMode.MANUAL) {
+            // Sur un plan, c'est la personne qui dit où elle est : pas de mesure sans position.
+            val here = mutableManualPosition.value ?: run {
+                mutableNetScan.value = NetScanState.Unavailable(NetScanProblem.POSITION_REQUIRED)
+                return
+            }
+            scanPlanPosition = here
+        } else {
+            scanPlanPosition = null
+            // Une mesure n'a de sens sur la carte que pendant un enregistrement.
+            if (active == null && position.value !is PositionState.Unavailable) startRecording()
+        }
         // Les permissions viennent peut-être d'être accordées : l'en-tête peut lire plus de détails.
         operatorRefresh.value++
-        // Une mesure n'a de sens sur la carte que pendant un enregistrement.
-        if (active == null && position.value !is PositionState.Unavailable) startRecording()
         scanRecording = active
         val mode = mutableMode.value
         samples.clear()
@@ -274,7 +340,55 @@ class MapScanViewModel(
     }
 
     fun toggleRecording() {
-        if (active != null) stopRecording() else startRecording()
+        if (active != null) stopRecording() else if (mappingMode.value != MappingMode.MANUAL) startRecording()
+    }
+
+    /** Mode manuel : la personne indique où elle se trouve sur le plan. */
+    fun placeHere(point: PlanPoint) {
+        val ready = plan.value as? PlanState.Ready ?: return
+        if (mutableNetScan.value is NetScanState.Running || !ready.plan.contains(point)) return
+        mutableManualPosition.value = point
+    }
+
+    /** Mode manuel : copie le plan choisi (image ou PDF) ; son échelle sera à régler. */
+    fun importPlan(uri: String) {
+        if (mutableImport.value == ImportStatus.IMPORTING) return
+        mutableImport.value = ImportStatus.IMPORTING
+        viewModelScope.launch {
+            mutableImport.value = try {
+                val imported = planImporter.import(visitId, uri)
+                planRepository.savePlan(FloorPlan(visitId, imported.imagePath, imported.widthPx, imported.heightPx, metersPerPixel = null))
+                ImportStatus.IDLE
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                logger.log(Level.WARNING, "Unable to import the floor plan", error)
+                ImportStatus.FAILED
+            }
+        }
+    }
+
+    /**
+     * Mode manuel : règle l'échelle à partir de deux points du plan et de la distance réelle qui les
+     * sépare. Retourne false si c'est inexploitable (points trop proches, distance nulle).
+     */
+    fun setScale(a: PlanPoint, b: PlanPoint, meters: Float): Boolean {
+        val current = when (val state = plan.value) {
+            is PlanState.NeedsScale -> state.plan
+            is PlanState.Ready -> state.plan
+            else -> return false
+        }
+        val scale = scaleFrom(current, a, b, meters) ?: return false
+        viewModelScope.launch {
+            try {
+                planRepository.setScale(visitId, scale)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                logger.log(Level.WARNING, "Unable to save the plan scale", error)
+            }
+        }
+        return true
     }
 
     /** Avant de quitter l'écran : abandonne le scan en cours et sauvegarde la fin du parcours. */
@@ -443,6 +557,20 @@ class MapScanViewModel(
     private fun complete(mode: NetScanMode, elapsedSeconds: Int) {
         val summary = summarize(samples.toList())
         samples.clear()
+        val planPosition = scanPlanPosition
+        scanPlanPosition = null
+        if (planPosition != null) {
+            scanSamples.clear()
+            if (summary == null) {
+                mutableNetScan.value = NetScanState.Unavailable(NetScanProblem.NO_DATA)
+                return
+            }
+            // La personne va se déplacer : la prochaine mesure demandera une nouvelle position.
+            mutableManualPosition.value = null
+            val operatorName = (operator.value as? OperatorStatus.Connected)?.name
+            save(NetScan(visitId, scanStartedAt, elapsedSeconds, mode, operatorName, summary, planPosition = planPosition), moved = false)
+            return
+        }
         val recording = scanRecording
         val recordingId = recording?.id
         // Positions recalées avec ce qu'on sait maintenant de leur portion de parcours.

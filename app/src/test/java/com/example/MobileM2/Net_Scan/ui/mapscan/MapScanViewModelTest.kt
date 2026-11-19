@@ -5,15 +5,22 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.MobileM2.Net_Scan.domain.AlignmentRules
+import com.example.MobileM2.Net_Scan.domain.FloorPlan
+import com.example.MobileM2.Net_Scan.domain.FloorPlanRepository
 import com.example.MobileM2.Net_Scan.domain.FloorPoint
 import com.example.MobileM2.Net_Scan.domain.GridCell
 import com.example.MobileM2.Net_Scan.domain.FloorPose
+import com.example.MobileM2.Net_Scan.domain.ImportedPlan
 import com.example.MobileM2.Net_Scan.domain.MapMeasurement
+import com.example.MobileM2.Net_Scan.domain.MappingMode
 import com.example.MobileM2.Net_Scan.domain.NetScan
 import com.example.MobileM2.Net_Scan.domain.NetScanMode
 import com.example.MobileM2.Net_Scan.domain.NetScanRepository
 import com.example.MobileM2.Net_Scan.domain.NetworkTechnology
 import com.example.MobileM2.Net_Scan.domain.OperatorStatus
+import com.example.MobileM2.Net_Scan.domain.PlanImporter
+import com.example.MobileM2.Net_Scan.domain.PlanMeasurement
+import com.example.MobileM2.Net_Scan.domain.PlanPoint
 import com.example.MobileM2.Net_Scan.domain.PositionSource
 import com.example.MobileM2.Net_Scan.domain.PositionState
 import com.example.MobileM2.Net_Scan.domain.PositioningUnavailable
@@ -62,6 +69,8 @@ class MapScanViewModelTest {
     private val source = FakeSignalSource()
     private val positions = FakePositionSource()
     private val recordings = FakeRecordingRepository()
+    private val plans = FakeFloorPlanRepository()
+    private var importer = PlanImporter { _, _ -> ImportedPlan("plans/visit.png", 2000, 1000) }
     private val store = ViewModelStore()
 
     @Before fun setup() { Dispatchers.setMain(dispatcher) }
@@ -87,6 +96,8 @@ class MapScanViewModelTest {
                     visitRepository = visits,
                     netScanRepository = netScans,
                     recordingRepository = recordings,
+                    planRepository = plans,
+                    planImporter = { visitId, uri -> importer.import(visitId, uri) },
                     signalSource = source,
                     positionSource = positions,
                     clock = { 1_000L },
@@ -454,6 +465,98 @@ class MapScanViewModelTest {
         assertFalse((viewModel.recording.value as RecordingState.Recording).realigning)
     }
 
+    @Test fun onAPlanTheScanWaitsForThePersonToPlaceThemself() = vmTest {
+        manualVisit()
+        val viewModel = viewModel()
+        viewModel.startNetScan()
+        assertEquals(NetScanState.Unavailable(NetScanProblem.POSITION_REQUIRED), viewModel.netScan.value)
+        assertEquals(RecordingState.Idle, viewModel.recording.value)
+    }
+
+    @Test fun onAPlanTheScanIsSavedWhereThePersonStood() = vmTest {
+        manualVisit()
+        source.signal.value = lte(rsrp = -90)
+        val viewModel = viewModel()
+        viewModel.placeHere(PlanPoint(0.4f, 0.6f))
+        assertEquals(PlanPoint(0.4f, 0.6f), viewModel.manualPosition.value)
+        viewModel.selectMode(NetScanMode.Timer(20))
+        viewModel.startNetScan()
+        seconds(20)
+
+        val saved = netScans.saved.single()
+        assertEquals(PlanPoint(0.4f, 0.6f), saved.planPosition)
+        assertNull(saved.recordingId)
+        assertNull(saved.position)
+        // Pas d'ARCore en mode manuel, et la prochaine mesure demandera une nouvelle position.
+        assertEquals(RecordingState.Idle, viewModel.recording.value)
+        assertNull(viewModel.manualPosition.value)
+    }
+
+    @Test fun onAPlanRecordingDoesNotStart() = vmTest {
+        manualVisit()
+        val viewModel = viewModel()
+        viewModel.toggleRecording()
+        assertEquals(RecordingState.Idle, viewModel.recording.value)
+    }
+
+    @Test fun aPositionOutsideThePlanOrBeforeTheScaleIsIgnored() = vmTest {
+        manualVisit(metersPerPixel = null)
+        val viewModel = viewModel()
+        assertTrue(viewModel.plan.value is PlanState.NeedsScale)
+        viewModel.placeHere(PlanPoint(0.5f, 0.5f))
+        assertNull(viewModel.manualPosition.value)
+
+        plans.plan.value = plans.plan.value!!.copy(metersPerPixel = 0.025f)
+        runCurrent()
+        viewModel.placeHere(PlanPoint(1.2f, 0.5f))
+        assertNull(viewModel.manualPosition.value)
+    }
+
+    @Test fun theScansOnThePlanMakeItsHeatmap() = vmTest {
+        manualVisit()
+        plans.measurements.value = listOf(PlanMeasurement(PlanPoint(0.1f, 0.1f), SignalLevel.HIGH))
+        val ready = viewModel().plan.value as PlanState.Ready
+        assertEquals(SignalLevel.HIGH, ready.map.measurements.single().level)
+        assertTrue(ready.map.heatmap.values.isNotEmpty())
+    }
+
+    @Test fun anImportedPlanStillNeedsItsScale() = vmTest {
+        visits.visit.value = visits.visit.value!!.copy(mode = MappingMode.MANUAL)
+        val viewModel = viewModel()
+        assertEquals(PlanState.Missing, viewModel.plan.value)
+        viewModel.importPlan("content://plan")
+        runCurrent()
+        assertEquals(ImportStatus.IDLE, viewModel.planImport.value)
+        assertEquals(FloorPlan(VISIT_ID, "plans/visit.png", 2000, 1000, null), plans.plan.value)
+        assertTrue(viewModel.plan.value is PlanState.NeedsScale)
+    }
+
+    @Test fun aFailedImportIsReported() = vmTest {
+        visits.visit.value = visits.visit.value!!.copy(mode = MappingMode.MANUAL)
+        importer = PlanImporter { _, _ -> throw java.io.IOException("not an image") }
+        val viewModel = viewModel()
+        viewModel.importPlan("content://broken")
+        runCurrent()
+        assertEquals(ImportStatus.FAILED, viewModel.planImport.value)
+        assertNull(plans.plan.value)
+    }
+
+    @Test fun theScaleComesFromTwoTappedPointsAndALength() = vmTest {
+        manualVisit(metersPerPixel = null)
+        val viewModel = viewModel()
+        assertFalse(viewModel.setScale(PlanPoint(0.5f, 0.5f), PlanPoint(0.5f, 0.5f), 4f))
+        assertTrue(viewModel.setScale(PlanPoint(0.1f, 0.5f), PlanPoint(0.3f, 0.5f), 10f))
+        runCurrent()
+        assertEquals(0.025f, plans.plan.value!!.metersPerPixel!!, 1e-6f)
+        assertTrue(viewModel.plan.value is PlanState.Ready)
+    }
+
+    /** Visite en mode manuel avec un plan de 2000 × 1000 pixels. */
+    private fun manualVisit(metersPerPixel: Float? = 0.025f) {
+        visits.visit.value = visits.visit.value!!.copy(mode = MappingMode.MANUAL)
+        plans.plan.value = FloorPlan(VISIT_ID, "plans/visit.png", 2000, 1000, metersPerPixel)
+    }
+
     /** Un mur de 4 m de large, à 3 m devant la caméra, et le sol jusqu'à lui. */
     private fun wallLine() = SceneObservation(
         camera = ScenePoint(0.25f, 1.4f, 0.25f),
@@ -482,7 +585,7 @@ class MapScanViewModelTest {
         val visit = MutableStateFlow<Visit?>(Visit(VISIT_ID, "Entrepôt Nord", "", "", 0))
         override fun observeVisits(): Flow<List<Visit>> = visit.map { listOfNotNull(it) }
         override fun observeVisit(id: Long): Flow<Visit?> = visit
-        override suspend fun createVisit(building: String, client: String, address: String) = Unit
+        override suspend fun createVisit(building: String, client: String, address: String, mode: MappingMode) = Unit
     }
 
     private class FakeNetScanRepository : NetScanRepository {
@@ -514,6 +617,19 @@ class MapScanViewModelTest {
         override val isSimulated = false
         override val position: Flow<PositionState> = state
         override val observations: Flow<SceneObservation> = scene
+    }
+
+    private class FakeFloorPlanRepository : FloorPlanRepository {
+        val plan = MutableStateFlow<FloorPlan?>(null)
+        val measurements = MutableStateFlow<List<PlanMeasurement>>(emptyList())
+        override fun observePlan(visitId: Long): Flow<FloorPlan?> = plan
+        override suspend fun savePlan(plan: FloorPlan) {
+            this.plan.value = plan
+        }
+        override suspend fun setScale(visitId: Long, metersPerPixel: Float) {
+            plan.value = plan.value?.copy(metersPerPixel = metersPerPixel)
+        }
+        override fun observePlanMeasurements(visitId: Long): Flow<List<PlanMeasurement>> = measurements
     }
 
     private class FakeRecordingRepository : RecordingRepository {

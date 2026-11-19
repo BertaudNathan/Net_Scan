@@ -1,5 +1,6 @@
 package com.example.MobileM2.Net_Scan.ui.visits
 
+import com.example.MobileM2.Net_Scan.domain.MappingMode
 import com.example.MobileM2.Net_Scan.domain.Visit
 import com.example.MobileM2.Net_Scan.domain.VisitRepository
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +43,15 @@ class VisitListViewModelTest {
         assertEquals(CreationState.Saved, viewModel.creationState.value)
     }
 
+    @Test fun theChosenMappingModeIsSaved() = runTest(dispatcher) {
+        val repository = FakeRepository()
+        val viewModel = VisitListViewModel(repository)
+        advanceUntilIdle()
+        viewModel.createVisit("Entrepôt", "", "", MappingMode.MANUAL)
+        advanceUntilIdle()
+        assertEquals(MappingMode.MANUAL, (viewModel.state.value as VisitListState.Success).visits.single().mode)
+    }
+
     @Test fun rejectsBlankBuildingWithoutSaving() = runTest(dispatcher) {
         val repository = FakeRepository()
         val viewModel = VisitListViewModel(repository)
@@ -81,9 +91,9 @@ class VisitListViewModelTest {
 
         override fun observeVisit(id: Long): Flow<Visit?> = visits.map { list -> list.firstOrNull { it.id == id } }
 
-        override suspend fun createVisit(building: String, client: String, address: String) {
+        override suspend fun createVisit(building: String, client: String, address: String, mode: MappingMode) {
             if (failSave) throw IllegalStateException("test")
-            visits.value = listOf(Visit(1, building, client, address, 1))
+            visits.value = listOf(Visit(1, building, client, address, 1, mode))
         }
     }
 }

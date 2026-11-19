@@ -29,10 +29,12 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.MobileM2.Net_Scan.data.AppDatabase
+import com.example.MobileM2.Net_Scan.data.RoomFloorPlanRepository
 import com.example.MobileM2.Net_Scan.data.RoomNetScanRepository
 import com.example.MobileM2.Net_Scan.data.RoomRecordingRepository
 import com.example.MobileM2.Net_Scan.data.RoomThemeRepository
 import com.example.MobileM2.Net_Scan.data.RoomVisitRepository
+import com.example.MobileM2.Net_Scan.data.plan.AndroidPlanImporter
 import com.example.MobileM2.Net_Scan.data.position.ArCoreTracker
 import com.example.MobileM2.Net_Scan.data.signal.TelephonySignalSource
 import com.example.MobileM2.Net_Scan.domain.ThemeMode
@@ -140,6 +142,11 @@ class MainActivity : ComponentActivity() {
                                                     database.recordingDao(),
                                                     database.netScanDao(),
                                                 ),
+                                                planRepository = RoomFloorPlanRepository(
+                                                    database.floorPlanDao(),
+                                                    database.netScanDao(),
+                                                ),
+                                                planImporter = AndroidPlanImporter(applicationContext),
                                                 signalSource = TelephonySignalSource(applicationContext),
                                                 positionSource = tracker,
                                             )

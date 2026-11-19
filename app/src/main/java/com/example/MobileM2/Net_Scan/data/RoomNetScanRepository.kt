@@ -23,6 +23,8 @@ class RoomNetScanRepository(private val dao: NetScanDao) : NetScanRepository {
                 recordingId = scan.recordingId,
                 mapX = scan.position?.x,
                 mapZ = scan.position?.z,
+                planX = scan.planPosition?.u,
+                planY = scan.planPosition?.v,
             ),
         )
     }
