@@ -5,7 +5,7 @@
     <string name="scans_description">Retrouvez vos visites et préparez votre prochain diagnostic.</string>
     <string name="new_scan">Nouveau scan</string>
     <string name="list_heading">Vos scans</string>
-    <string name="feature_scope">Prototype : les visites et les scans réseau sont enregistrés sur cet appareil. La cartographie ARCore et le rapport ne sont pas encore disponibles.</string>
+    <string name="feature_scope">Prototype : visites, parcours ARCore, carte des pièces et scans réseau sont enregistrés sur cet appareil. La nature des obstacles (annotations) et le rapport ne sont pas encore disponibles.</string>
     <string name="created_date">Créé le %1$s</string>
     <string name="empty_title">Aucun scan pour le moment</string>
     <string name="empty_description">Commencez par créer une visite pour un bâtiment.</string>
@@ -55,7 +55,6 @@
     <string name="visit_error">Impossible d’afficher la visite.</string>
     <string name="close">Fermer</string>
     <string name="simulated_data">Données simulées</string>
-    <string name="prototype_badge">Prototype</string>
     <string name="scan_history_open">Historique des mesures</string>
     <string name="scan_history_title">Mesures de la visite</string>
     <string name="scan_history_loading">Chargement des mesures…</string>
@@ -80,11 +79,44 @@
     <string name="camera_preview_description">Aperçu de la caméra</string>
     <string name="camera_enable">Activer la caméra</string>
     <string name="camera_settings">Autoriser dans les réglages</string>
-    <string name="camera_unavailable">Caméra indisponible</string>
+    <string name="arcore_install">Installer ARCore</string>
+    <string name="arcore_unsupported_short">ARCore non pris en charge</string>
 
-    <string name="map_placeholder_title">Cartographie ARCore</string>
-    <string name="map_placeholder_body">Bientôt disponible : la carte du bâtiment se construira pendant l’enregistrement.</string>
-    <string name="map_placeholder_recording">Enregistrement en cours. Le parcours n’est pas encore cartographié.</string>
+    <!-- Carte du parcours et heatmap -->
+    <string name="map_empty_title">Aucun parcours</string>
+    <string name="map_empty_body">Lancez l’enregistrement et marchez en filmant la pièce, téléphone tenu droit : le sol et les murs vus par la caméra dessinent la carte. Chaque scan réseau y est placé.</string>
+    <string name="map_load_error">Impossible d’afficher le dernier parcours.</string>
+    <string name="map_last_recording">Dernier parcours · %1$s</string>
+    <string name="mapping_unavailable_title">Cartographie indisponible</string>
+    <string name="mapping_unavailable_body">%1$s Les scans réseau restent possibles, mais ne seront pas placés sur la carte.</string>
+    <string name="mapping_unavailable_camera_permission">La caméra est nécessaire pour suivre vos déplacements. Aucune image n’est enregistrée.</string>
+    <string name="mapping_unavailable_unsupported">Ce téléphone n’est pas compatible ARCore.</string>
+    <string name="mapping_unavailable_not_installed">Installez les Services Google Play pour la réalité augmentée depuis l’aperçu caméra.</string>
+    <string name="mapping_unavailable_camera_error">La caméra est indisponible : elle est peut-être utilisée par une autre application.</string>
+    <string name="mapping_unavailable_error">Le suivi ARCore a rencontré une erreur.</string>
+    <string name="tracking_waiting">Déplacez lentement le téléphone pour démarrer le suivi.</string>
+    <string name="tracking_starting">Démarrage du suivi : déplacez lentement le téléphone</string>
+    <string name="tracking_lost_motion">Suivi en pause : bougez plus lentement</string>
+    <string name="tracking_lost_light">Suivi en pause : pas assez de lumière</string>
+    <string name="tracking_lost_features">Suivi en pause : visez une zone plus détaillée</string>
+    <string name="tracking_lost_camera">Suivi en pause : caméra indisponible</string>
+    <string name="tracking_lost_unknown">Suivi en pause : revenez vers une zone déjà filmée</string>
+    <string name="map_realigning">Recalage sur la carte déjà tracée…</string>
+    <string name="recording_save_failed">Parcours non sauvegardé, nouvel essai en cours</string>
+    <string name="map_description">Carte du parcours vue de dessus, %1$s.</string>
+    <plurals name="map_measurements">
+        <item quantity="one">%1$d scan réseau placé</item>
+        <item quantity="other">%1$d scans réseau placés</item>
+    </plurals>
+    <string name="map_measurements_detail">%1$s (%2$s)</string>
+    <string name="map_level_count">%1$s : %2$d</string>
+    <string name="map_position_shown">Votre position est indiquée par une flèche.</string>
+    <string name="map_legend">Légende de la carte</string>
+    <string name="legend_estimated">Couleur atténuée : estimé d’après les mesures voisines</string>
+    <string name="legend_unexplored">Hachures : sol vu, trop loin d’une mesure</string>
+    <string name="legend_obstacle">Plein foncé : mur ou obstacle vu par la caméra</string>
+    <string name="legend_measurement">Rond cerclé : scan réseau</string>
+    <string name="legend_position">Point et flèche : votre position</string>
 
     <string name="record_start">Démarrer l’enregistrement</string>
     <string name="record_stop">Arrêter l’enregistrement</string>
@@ -107,6 +139,9 @@
     <string name="net_scan_saved">Résultat enregistré dans la visite.</string>
     <string name="net_scan_save_error">Le résultat n’a pas pu être enregistré.</string>
     <string name="net_scan_discard_result">Abandonner le résultat</string>
+    <string name="net_scan_hold_still">Restez immobile, la caméra tournée vers la pièce et non vers le sol : le suivi reste ainsi précis.</string>
+    <string name="net_scan_moved">Vous avez bougé pendant la mesure : sa position sur la carte est approximative.</string>
+    <string name="net_scan_not_placed">Mesure non placée sur la carte : aucune position n’était disponible pendant le scan.</string>
     <plurals name="net_scan_result_basis">
         <item quantity="one">Médiane de %1$d mesure sur %2$s</item>
         <item quantity="other">Médiane de %1$d mesures sur %2$s</item>
@@ -140,5 +175,5 @@
     <string name="open_settings">Ouvrir les réglages</string>
 
     <string name="leave_visit_title">Quitter la visite ?</string>
-    <string name="leave_visit_message">L’enregistrement et le scan réseau en cours seront arrêtés. Un scan réseau non terminé n’est pas conservé.</string>
+    <string name="leave_visit_message">L’enregistrement sera arrêté et le parcours sauvegardé. Un scan réseau non terminé n’est pas conservé.</string>
 </resources>

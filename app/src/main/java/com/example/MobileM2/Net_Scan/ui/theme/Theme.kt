@@ -83,6 +83,12 @@ object Design {
     val previewShape = RoundedCornerShape(12.dp)
     val recordButtonSize = 56.dp
     val overlayWidth = 360.dp
+    val legendWidth = 280.dp
+    val swatchShape = RoundedCornerShape(4.dp)
+
+    /** Marges de la carte sous les bandeaux du haut et les commandes du bas. */
+    val mapTopInset = 56.dp
+    val mapBottomInset = 128.dp
 }
 
 /** Fond et texte d'un niveau de signal. Chaque paire garde un contraste d'au moins 4,5:1, quel que soit le thème. */

@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.os.VibrationEffect
+import android.os.VibratorManager
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
@@ -18,6 +20,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -34,6 +37,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -47,6 +52,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +61,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -78,12 +86,16 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.MobileM2.Net_Scan.R
+import com.example.MobileM2.Net_Scan.domain.HeatCell
 import com.example.MobileM2.Net_Scan.domain.NetScanMode
 import com.example.MobileM2.Net_Scan.domain.NetScanSummary
 import com.example.MobileM2.Net_Scan.domain.Handedness
 import com.example.MobileM2.Net_Scan.domain.NetworkTechnology
 import com.example.MobileM2.Net_Scan.domain.OperatorStatus
+import com.example.MobileM2.Net_Scan.domain.PositionState
+import com.example.MobileM2.Net_Scan.domain.PositioningUnavailable
 import com.example.MobileM2.Net_Scan.domain.SignalLevel
+import com.example.MobileM2.Net_Scan.domain.TrackingProblem
 import com.example.MobileM2.Net_Scan.ui.theme.Design
 import com.example.MobileM2.Net_Scan.ui.theme.DestructiveButton
 import com.example.MobileM2.Net_Scan.ui.theme.LevelColors
@@ -93,6 +105,8 @@ import com.example.MobileM2.Net_Scan.ui.theme.RecordColors
 import com.example.MobileM2.Net_Scan.ui.theme.SecondaryButton
 import com.example.MobileM2.Net_Scan.ui.theme.SignalColors
 import com.example.MobileM2.Net_Scan.ui.theme.TertiaryButton
+import java.text.DateFormat
+import java.util.Date
 import java.util.Locale
 
 private val SIGNAL_PERMISSIONS = arrayOf(
@@ -106,7 +120,7 @@ fun MapScanScreen(
     viewModel: MapScanViewModel,
     onClose: () -> Unit,
     handedness: Handedness = Handedness.RIGHT,
-    cameraPreview: @Composable (Modifier) -> Unit = { CameraPreview(it) },
+    cameraPreview: @Composable (Modifier) -> Unit,
 ) {
     val visit by viewModel.visit.collectAsStateWithLifecycle()
     val operator by viewModel.operator.collectAsStateWithLifecycle()
@@ -114,6 +128,8 @@ fun MapScanScreen(
     val netScan by viewModel.netScan.collectAsStateWithLifecycle()
     val recording by viewModel.recording.collectAsStateWithLifecycle()
     val history by viewModel.history.collectAsStateWithLifecycle()
+    val map by viewModel.map.collectAsStateWithLifecycle()
+    val position by viewModel.position.collectAsStateWithLifecycle()
     var showLeave by rememberSaveable { mutableStateOf(false) }
     var showHistory by rememberSaveable { mutableStateOf(false) }
     val busy = recording is RecordingState.Recording || netScan is NetScanState.Running
@@ -121,6 +137,7 @@ fun MapScanScreen(
 
     LockPortrait()
     KeepScreenOn(busy)
+    TrackingLossAlert(tracking = position is PositionState.Tracking, recording = recording is RecordingState.Recording)
 
     val requestClose = { if (busy) showLeave = true else onClose() }
     BackHandler(onBack = requestClose)
@@ -157,6 +174,8 @@ fun MapScanScreen(
                 VisitState.Missing -> CenteredMessage(stringResource(R.string.visit_missing), Modifier.weight(1f), onClose = onClose)
                 VisitState.Error -> CenteredMessage(stringResource(R.string.visit_error), Modifier.weight(1f), onClose = onClose)
                 is VisitState.Loaded -> MapArea(
+                    map = map,
+                    position = position,
                     mode = mode,
                     netScan = netScan,
                     recording = recording,
@@ -193,6 +212,7 @@ fun MapScanScreen(
             confirmButton = {
                 DestructiveButton(onClick = {
                     showLeave = false
+                    viewModel.leave()
                     onClose()
                 }) { Text(stringResource(R.string.exit)) }
             },
@@ -272,6 +292,8 @@ private fun Header(
 
 @Composable
 private fun MapArea(
+    map: MapState,
+    position: PositionState,
     mode: NetScanMode,
     netScan: NetScanState,
     recording: RecordingState,
@@ -296,28 +318,44 @@ private fun MapArea(
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
     ) {
-        Box(Modifier.fillMaxSize().background(filter)) {
+        Box(Modifier.fillMaxSize()) {
+            if (map is MapState.Ready) {
+                FloorMapView(
+                    map = map.map,
+                    pose = map.pose,
+                    contentPadding = PaddingValues(
+                        start = Design.spaceMedium,
+                        end = Design.spaceMedium,
+                        top = Design.mapTopInset,
+                        bottom = Design.mapBottomInset,
+                    ),
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            // Le filtre du scan réseau teinte la carte, sous les commandes.
+            Box(Modifier.fillMaxSize().background(filter))
             Column(Modifier.fillMaxSize().padding(Design.spaceSmall)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().heightIn(min = Design.touchTarget),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    if (recording is RecordingState.Recording) {
-                        RecordingIndicator(recording.elapsedSeconds, Modifier.weight(1f, fill = false))
+                // Bandeaux de la carte (enregistrement, suivi, parcours) à gauche ; historique et légende à droite.
+                Row(modifier = Modifier.fillMaxWidth().heightIn(min = Design.touchTarget), verticalAlignment = Alignment.Top) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(Design.spaceExtraSmall),
+                    ) {
+                        StatusChips(map, position, recording)
                     }
-                    Spacer(Modifier.weight(1f))
+                    // L'enregistrement reste allumé en permanence : l'historique reste consultable pendant.
                     TertiaryButton(
                         onClick = onShowHistory,
-                        enabled = recording !is RecordingState.Recording && netScan !is NetScanState.Running,
+                        enabled = netScan !is NetScanState.Running,
                     ) { Text(stringResource(R.string.scan_history_open)) }
+                    if (map is MapState.Ready) MapLegendButton()
                 }
                 Box(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (netScan == NetScanState.Idle) {
-                        MapPlaceholder(recording = recording is RecordingState.Recording)
+                        MapMessage(map, position)
                     } else {
                         NetScanPanel(netScan, actions)
                     }
@@ -461,6 +499,12 @@ private fun RunningContent(state: NetScanState.Running, actions: MapActions) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+    Text(
+        text = stringResource(R.string.net_scan_hold_still),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+    )
     TechnicalDetails(state.summary)
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -503,6 +547,19 @@ private fun CompletedContent(state: NetScanState.Completed, actions: MapActions)
         textAlign = TextAlign.Center,
         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
     )
+    val placement = when {
+        state.result.position == null -> R.string.net_scan_not_placed
+        state.movedDuringScan -> R.string.net_scan_moved
+        else -> null
+    }
+    if (placement != null) {
+        Text(
+            text = stringResource(placement),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+    }
     TechnicalDetails(summary)
     if (state.saveState == SaveState.FAILED) {
         PrimaryButton(onClick = actions.retrySave, modifier = Modifier.fillMaxWidth()) {
@@ -636,32 +693,202 @@ private fun DetailRow(label: String, value: String) {
     }
 }
 
+/** Message au centre de la carte quand il n'y a rien, ou pas encore rien, à dessiner. */
 @Composable
-private fun MapPlaceholder(recording: Boolean) {
-    Column(
-        modifier = Modifier.verticalScroll(rememberScrollState()).padding(Design.spaceMedium),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(Design.spaceSmall),
-    ) {
-        Icon(
-            painterResource(R.drawable.ic_map),
-            contentDescription = null,
-            modifier = Modifier.size(48.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+private fun MapMessage(map: MapState, position: PositionState) {
+    val unavailable = (position as? PositionState.Unavailable)?.reason
+    when {
+        unavailable != null && (map !is MapState.Ready || map.live) -> MessageCard(
+            title = stringResource(R.string.mapping_unavailable_title),
+            body = stringResource(R.string.mapping_unavailable_body, stringResource(unavailableMessage(unavailable))),
         )
-        Text(
-            text = stringResource(R.string.map_placeholder_title),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
+        map is MapState.Loading -> CircularProgressIndicator(modifier = Modifier.clearAndSetSemantics {})
+        map is MapState.Error -> MessageCard(title = null, body = stringResource(R.string.map_load_error))
+        map is MapState.Empty -> MessageCard(
+            title = stringResource(R.string.map_empty_title),
+            body = stringResource(R.string.map_empty_body),
         )
-        Text(
-            text = stringResource(if (recording) R.string.map_placeholder_recording else R.string.map_placeholder_body),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-        Badge(stringResource(R.string.prototype_badge))
+        map is MapState.Ready && map.live && map.map.heatmap.area.isEmpty() ->
+            MessageCard(title = null, body = stringResource(R.string.tracking_waiting))
+        else -> Unit
     }
+}
+
+@Composable
+private fun MessageCard(title: String?, body: String) {
+    Surface(
+        modifier = Modifier.widthIn(max = Design.overlayWidth),
+        shape = Design.cardShape,
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
+            modifier = Modifier.verticalScroll(rememberScrollState()).padding(Design.spaceMedium),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(Design.spaceSmall),
+        ) {
+            Icon(
+                painterResource(R.drawable.ic_map),
+                contentDescription = null,
+                modifier = Modifier.size(48.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (title != null) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        }
+    }
+}
+
+/** Bandeaux en haut de la carte : enregistrement, état du suivi, parcours affiché. */
+@Composable
+private fun StatusChips(map: MapState, position: PositionState, recording: RecordingState) {
+    if (recording is RecordingState.Recording) {
+        RecordingIndicator(recording.elapsedSeconds)
+        trackingMessage(position)?.let { StatusChip(stringResource(it), warning = true) }
+        if (recording.realigning && position is PositionState.Tracking) {
+            StatusChip(stringResource(R.string.map_realigning), warning = false)
+        }
+        if (recording.saveFailed) StatusChip(stringResource(R.string.recording_save_failed), warning = true)
+    } else if (map is MapState.Ready && map.recordedAt != null) {
+        val locale = LocalConfiguration.current.locales[0]
+        val date = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT, locale).format(Date(map.recordedAt))
+        StatusChip(stringResource(R.string.map_last_recording, date), warning = false)
+        if (position is PositionState.Unavailable) StatusChip(stringResource(R.string.mapping_unavailable_title), warning = true)
+    }
+}
+
+@Composable
+private fun StatusChip(text: String, warning: Boolean) {
+    Surface(
+        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        shape = Design.badgeShape,
+        color = if (warning) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surface,
+        contentColor = if (warning) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface,
+        border = if (warning) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+        )
+    }
+}
+
+@Composable
+private fun MapLegendButton() {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }, modifier = Modifier.size(Design.touchTarget)) {
+            Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.map_legend))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            MapLegend(Modifier.widthIn(max = Design.legendWidth).padding(horizontal = Design.spaceMedium, vertical = Design.spaceSmall))
+        }
+    }
+}
+
+@Composable
+private fun MapLegend(modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    val estimated = HeatCellPreview.estimated
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(Design.spaceSmall)) {
+        Text(
+            text = stringResource(R.string.map_legend),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.semantics { heading() },
+        )
+        listOf(SignalLevel.HIGH, SignalLevel.MEDIUM, SignalLevel.LOW, SignalLevel.NONE).forEach { level ->
+            LegendRow(stringResource(levelName(level))) { Swatch(levelColors(level).container) }
+        }
+        LegendRow(stringResource(R.string.legend_estimated)) { Swatch(MapColors.cell(colors.surface, estimated)) }
+        LegendRow(stringResource(R.string.legend_unexplored)) { HatchSwatch() }
+        LegendRow(stringResource(R.string.legend_obstacle)) { Swatch(MapColors.obstacle(colors.surface, colors.onSurface)) }
+        LegendRow(stringResource(R.string.legend_measurement)) {
+            Box(Modifier.size(14.dp).background(SignalColors.medium.container, CircleShape).border(2.dp, colors.onSurface, CircleShape))
+        }
+        LegendRow(stringResource(R.string.legend_position)) {
+            Box(Modifier.size(14.dp).background(colors.onSurface, CircleShape))
+        }
+    }
+}
+
+/** Case estimée à mi-distance, pour la légende. */
+private object HeatCellPreview {
+    val estimated = HeatCell(SignalLevel.MEDIUM, measured = false, confidence = 0.5f)
+}
+
+@Composable
+private fun LegendRow(label: String, swatch: @Composable () -> Unit) {
+    Row(
+        modifier = Modifier.semantics(mergeDescendants = true) {},
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Design.spaceSmall),
+    ) {
+        Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) { swatch() }
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+/** Case inconnue : fond léger et hachures, comme sur la carte. */
+@Composable
+private fun HatchSwatch() {
+    val colors = MaterialTheme.colorScheme
+    val fill = MapColors.unexplored(colors.surface, colors.outline)
+    val hatch = MapColors.hatch(colors.outline)
+    Box(
+        Modifier.size(18.dp)
+            .clip(Design.swatchShape)
+            .drawBehind {
+                drawRect(fill)
+                val step = size.width / 3
+                for (i in 1..5) {
+                    drawLine(hatch, Offset(0f, i * step), Offset(i * step, 0f), 1.dp.toPx())
+                }
+            }
+            .border(1.dp, colors.outline, Design.swatchShape),
+    )
+}
+
+@Composable
+private fun Swatch(color: Color) {
+    Box(
+        Modifier.size(18.dp)
+            .background(color, Design.swatchShape)
+            .border(1.dp, MaterialTheme.colorScheme.outline, Design.swatchShape),
+    )
+}
+
+private fun trackingMessage(position: PositionState): Int? = when (position) {
+    PositionState.Starting -> R.string.tracking_starting
+    is PositionState.Lost -> when (position.problem) {
+        TrackingProblem.EXCESSIVE_MOTION -> R.string.tracking_lost_motion
+        TrackingProblem.INSUFFICIENT_LIGHT -> R.string.tracking_lost_light
+        TrackingProblem.INSUFFICIENT_FEATURES -> R.string.tracking_lost_features
+        TrackingProblem.CAMERA_UNAVAILABLE -> R.string.tracking_lost_camera
+        TrackingProblem.UNKNOWN -> R.string.tracking_lost_unknown
+    }
+    else -> null
+}
+
+private fun unavailableMessage(reason: PositioningUnavailable): Int = when (reason) {
+    PositioningUnavailable.CAMERA_PERMISSION -> R.string.mapping_unavailable_camera_permission
+    PositioningUnavailable.UNSUPPORTED_DEVICE -> R.string.mapping_unavailable_unsupported
+    PositioningUnavailable.ARCORE_NOT_INSTALLED -> R.string.mapping_unavailable_not_installed
+    PositioningUnavailable.CAMERA_ERROR -> R.string.mapping_unavailable_camera_error
+    PositioningUnavailable.ERROR -> R.string.mapping_unavailable_error
 }
 
 @Composable
@@ -735,6 +962,26 @@ private fun LockPortrait() {
         activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         onDispose { activity.requestedOrientation = previous }
     }
+}
+
+/**
+ * Vibre quand le suivi décroche pendant un enregistrement : on regarde la pièce, pas l'écran, et
+ * une perte non remarquée finit en carte décalée. Le bandeau à l'écran l'annonce aussi au lecteur d'écran.
+ */
+@Composable
+private fun TrackingLossAlert(tracking: Boolean, recording: Boolean) {
+    val context = LocalContext.current
+    var wasTracking by remember { mutableStateOf(false) }
+    LaunchedEffect(tracking, recording) {
+        if (recording && wasTracking && !tracking) vibrate(context)
+        wasTracking = tracking && recording
+    }
+}
+
+private fun vibrate(context: Context) {
+    val vibrator = context.getSystemService(VibratorManager::class.java)?.defaultVibrator ?: return
+    if (!vibrator.hasVibrator()) return
+    vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 150, 100, 150), -1))
 }
 
 /** Évite que l'écran s'éteigne pendant un scan réseau ou un enregistrement. */

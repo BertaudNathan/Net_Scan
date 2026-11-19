@@ -1,5 +1,6 @@
 package com.example.MobileM2.Net_Scan.data
 
+import com.example.MobileM2.Net_Scan.domain.FloorPoint
 import com.example.MobileM2.Net_Scan.domain.NetScan
 import com.example.MobileM2.Net_Scan.domain.NetScanMode
 import com.example.MobileM2.Net_Scan.domain.NetScanRepository
@@ -20,6 +21,8 @@ class RoomNetScanRepository(private val dao: NetScanDao) : NetScanRepository {
                     mode = row.timerSeconds?.let { NetScanMode.Timer(it) } ?: NetScanMode.Free,
                     operatorName = row.operatorName,
                     id = row.id,
+                    recordingId = row.recordingId,
+                    position = row.mapX?.let { x -> row.mapZ?.let { z -> FloorPoint(x, z) } },
                     summary = NetScanSummary(
                         level = SignalLevel.valueOf(row.level),
                         technology = NetworkTechnology.valueOf(row.technology),
@@ -48,6 +51,9 @@ class RoomNetScanRepository(private val dao: NetScanDao) : NetScanRepository {
                 sampleCount = scan.summary.sampleCount,
                 band = scan.summary.band,
                 cellId = scan.summary.cellId,
+                recordingId = scan.recordingId,
+                mapX = scan.position?.x,
+                mapZ = scan.position?.z,
             ),
         )
     }

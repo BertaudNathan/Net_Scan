@@ -2,13 +2,20 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Aperçu caméra pour la cartographie : aucune image n'est enregistrée. -->
+    <!-- Caméra pour le suivi ARCore et son aperçu : aucune image n'est enregistrée. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- Android exige la localisation précise pour lire les informations de cellule. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- SIM et opérateur actifs. -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- ARCore lit le gyroscope et l'accéléromètre dans le processus de l'app : sans cette permission,
+         Android 12+ bride leur fréquence et le suivi décroche ou exagère les déplacements. -->
+    <!-- Vibration quand le suivi décroche pendant un enregistrement. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission
+        android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS"
+        tools:ignore="HighSamplingRate" />
 
     <uses-feature android:name="android.hardware.telephony" android:required="true" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
@@ -22,6 +29,9 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Net_Scan">
+        <!-- ARCore facultatif : sans lui, les scans réseau restent possibles, sans carte. -->
+        <meta-data android:name="com.google.ar.core" android:value="optional" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
