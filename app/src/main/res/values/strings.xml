@@ -5,7 +5,7 @@
     <string name="scans_description">Retrouvez vos visites et préparez votre prochain diagnostic.</string>
     <string name="new_scan">Nouveau scan</string>
     <string name="list_heading">Vos scans</string>
-    <string name="feature_scope">Prototype : les visites et les scans réseau sont enregistrés sur cet appareil. La cartographie ARCore et le rapport ne sont pas encore disponibles.</string>
+    <string name="feature_scope">Prototype : les visites et les scans réseau sont enregistrés sur cet appareil. Le rapport PDF se génère depuis chaque visite ; la cartographie ARCore n’est pas encore disponible.</string>
     <string name="created_date">Créé le %1$s</string>
     <string name="empty_title">Aucun scan pour le moment</string>
     <string name="empty_description">Commencez par créer une visite pour un bâtiment.</string>
@@ -138,6 +138,75 @@
     <string name="problem_no_data">Aucune donnée radio reçue pendant le scan.</string>
     <string name="problem_signal_error">La lecture du réseau a échoué.</string>
     <string name="open_settings">Ouvrir les réglages</string>
+
+    <!-- Rapport : écran -->
+    <string name="report_open">Rapport</string>
+    <string name="report_screen_title">Rapport de la visite</string>
+    <string name="report_back">Retour à la visite</string>
+    <string name="report_generating">Préparation du rapport…</string>
+    <string name="report_error">Impossible de préparer le rapport.</string>
+    <string name="report_missing">Cette visite n’existe plus.</string>
+    <string name="report_empty_warning">Aucune mesure n’est encore enregistrée : le rapport contiendra seulement les informations de la visite et le plan à compléter.</string>
+    <string name="report_download">Télécharger le PDF</string>
+    <string name="report_downloading">Enregistrement du PDF…</string>
+    <string name="report_send">Envoyer par e-mail</string>
+    <string name="report_send_chooser">Envoyer le rapport</string>
+    <string name="report_plan_hint">Le plan n’est pas encore intégré : le PDF réserve une page pour y reporter les points de mesure et l’emplacement de l’antenne.</string>
+    <string name="report_saved">Rapport enregistré.</string>
+    <string name="report_save_failed">Le rapport n’a pas pu être enregistré.</string>
+    <string name="report_no_app">Aucune application ne permet d’envoyer ce fichier.</string>
+    <string name="report_preview_title">Aperçu</string>
+    <string name="report_preview_loading">Chargement de l’aperçu…</string>
+    <string name="report_preview_error">Aperçu indisponible. Le PDF peut tout de même être téléchargé ou envoyé.</string>
+    <string name="report_preview_page">Page %1$d du rapport</string>
+    <string name="report_level_count">%1$s : %2$d</string>
+    <plurals name="report_point_total">
+        <item quantity="one">%1$d point de mesure</item>
+        <item quantity="other">%1$d points de mesure</item>
+    </plurals>
+    <string name="report_email_subject">Rapport de diagnostic réseau – %1$s</string>
+    <string name="report_email_body">Bonjour,\n\nVeuillez trouver ci-joint le rapport de diagnostic réseau du bâtiment %1$s.\n\nCordialement</string>
+
+    <!-- Rapport : contenu du PDF -->
+    <string name="report_title_with_building">Rapport de diagnostic réseau – %1$s</string>
+    <string name="report_client">Client</string>
+    <string name="report_address">Adresse</string>
+    <string name="report_visit_date">Visite créée le</string>
+    <string name="report_generated">Rapport généré le</string>
+    <string name="report_operators">Opérateurs mesurés</string>
+    <string name="report_point_count">Points de mesure</string>
+    <string name="report_not_provided">Non renseigné</string>
+    <string name="report_summary">Synthèse</string>
+    <string name="report_weak_points">Points à couvrir en priorité (signal faible ou inexistant) : %1$s.</string>
+    <string name="report_no_weak_points">Aucun point mesuré n’a un signal faible ou inexistant.</string>
+    <string name="report_no_points">Aucune mesure enregistrée pour cette visite.</string>
+    <string name="report_thresholds">Niveaux : Haut si RSRP &gt; −80 dBm et SINR &gt; 13 dB ; Faible si RSRP &lt; −100 dBm ou SINR &lt; 0 dB ; Moyen entre les deux ; Inexistant sans service. Le pire des deux indicateurs est retenu. Chaque point est la médiane des lectures d’un scan d’au moins 20 s.</string>
+    <string name="report_plan_title">Plan et points de mesure</string>
+    <string name="report_plan_instructions">Collez ou dessinez le plan des locaux dans le cadre, puis reportez-y chaque point de mesure (P1, P2…) avec la couleur de son niveau, ainsi que l’emplacement retenu pour l’antenne.</string>
+    <string name="report_plan_placeholder">Emplacement du plan</string>
+    <string name="report_points_legend">Points à reporter sur le plan</string>
+    <string name="report_antenna_title">Placement de l’antenne</string>
+    <string name="report_antenna_location">Emplacement retenu</string>
+    <string name="report_antenna_height">Hauteur et fixation</string>
+    <string name="report_antenna_power">Alimentation électrique</string>
+    <string name="report_antenna_notes">Remarques</string>
+    <string name="report_measures_title">Mesures</string>
+    <string name="report_col_point">Point</string>
+    <string name="report_col_date">Date et heure</string>
+    <string name="report_col_operator">Opérateur</string>
+    <string name="report_col_technology">Techno.</string>
+    <string name="report_col_level">Niveau</string>
+    <string name="report_col_duration">Durée</string>
+    <string name="report_annex_title">Annexe technique</string>
+    <string name="report_annex_intro">Valeurs médianes brutes, destinées au technicien. « — » : valeur non fournie par le modem.</string>
+    <string name="report_col_rsrp">RSRP</string>
+    <string name="report_col_sinr">SINR</string>
+    <string name="report_col_band">Bande</string>
+    <string name="report_col_cell">Cellule</string>
+    <string name="report_col_samples">Lectures</string>
+    <string name="report_col_mode">Mode</string>
+    <string name="report_missing_value">—</string>
+    <string name="report_footer">Net Scan · prototype · page %1$d</string>
 
     <string name="leave_visit_title">Quitter la visite ?</string>
     <string name="leave_visit_message">L’enregistrement et le scan réseau en cours seront arrêtés. Un scan réseau non terminé n’est pas conservé.</string>
