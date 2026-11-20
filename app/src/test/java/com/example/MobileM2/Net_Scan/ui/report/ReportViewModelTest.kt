@@ -162,7 +162,8 @@ class ReportViewModelTest {
     private class FakeNetScanRepository : NetScanRepository {
         val scans = MutableStateFlow<List<NetScan>>(emptyList())
         override fun observeForVisit(visitId: Long): Flow<List<NetScan>> = scans
-        override suspend fun save(scan: NetScan) = Unit
+        override suspend fun save(scan: NetScan) = 0L
+        override suspend fun delete(id: Long) = Unit
     }
 
     private class FakeFloorPlanRepository : FloorPlanRepository {

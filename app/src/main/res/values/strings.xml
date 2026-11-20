@@ -70,6 +70,12 @@
     <string name="scan_history_date">Mesure du %1$s</string>
     <string name="scan_history_operator">Opérateur : %1$s</string>
     <string name="scan_history_mode">Mode : %1$s</string>
+    <string name="scan_delete">Supprimer la mesure</string>
+    <string name="scan_delete_title">Supprimer cette mesure ?</string>
+    <string name="scan_delete_body">La mesure du %1$s sera retirée de l’historique, de la carte et du rapport. Cette action est définitive.</string>
+    <string name="scan_delete_confirm">Supprimer</string>
+    <string name="scan_delete_failed">La mesure n’a pas pu être supprimée. Réessayez.</string>
+    <string name="scan_measure_here">Mesurer ici</string>
 
     <string name="operator_loading">Recherche de l’opérateur…</string>
     <string name="operator_unknown_name">Opérateur inconnu</string>
@@ -149,6 +155,7 @@
     <string name="plan_scale_adjust">Échelle</string>
     <string name="plan_place_yourself">Touchez votre position sur le plan</string>
     <string name="plan_position_set">Position choisie : lancez le scan réseau</string>
+    <string name="plan_scan_selected">Mesure choisie : supprimez-la ou mesurez à nouveau ici</string>
     <string name="plan_position_marked">Votre position est marquée par une cible.</string>
     <string name="plan_position_missing">Touchez le plan pour indiquer votre position.</string>
     <string name="plan_description">Plan de la visite, %1$s. %2$s Pincez pour zoomer, touchez deux fois pour revenir à la vue d’ensemble.</string>

@@ -63,6 +63,18 @@ class PlanWallsTest {
         assertNull(wallNear(plan, PlanPoint(0.52f, 0.2f), walls, tolerancePixels = 20f))
     }
 
+    @Test fun tappingNearASavedMeasurementSelectsTheClosest() {
+        val measurements = listOf(
+            PlanMeasurement(PlanPoint(0.3f, 0.3f), SignalLevel.HIGH, scanId = 1),
+            PlanMeasurement(PlanPoint(0.31f, 0.3f), SignalLevel.LOW, scanId = 2),
+            // Pas encore en base : on ne peut pas la choisir.
+            PlanMeasurement(PlanPoint(0.6f, 0.6f), SignalLevel.LOW),
+        )
+        assertEquals(2L, measurementNear(plan, PlanPoint(0.308f, 0.3f), measurements, tolerancePixels = 20f)?.scanId)
+        assertNull(measurementNear(plan, PlanPoint(0.6f, 0.6f), measurements, tolerancePixels = 20f))
+        assertNull(measurementNear(plan, PlanPoint(0.3f, 0.4f), measurements, tolerancePixels = 20f))
+    }
+
     @Test fun wallsBecomeGridCellsOnceScaled() {
         // Mur horizontal de 2 m, de (2,1 m ; 1,1 m) à (4,1 m ; 1,1 m).
         val wall = PlanWall(1, PlanPoint(0.105f, 0.11f), PlanPoint(0.205f, 0.11f))

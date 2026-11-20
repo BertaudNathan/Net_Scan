@@ -19,6 +19,7 @@ import com.example.MobileM2.Net_Scan.domain.NetScanSummary
 import com.example.MobileM2.Net_Scan.domain.OccupancyMap
 import com.example.MobileM2.Net_Scan.domain.OperatorStatus
 import com.example.MobileM2.Net_Scan.domain.PlanImporter
+import com.example.MobileM2.Net_Scan.domain.PlanMeasurement
 import com.example.MobileM2.Net_Scan.domain.PlanPoint
 import com.example.MobileM2.Net_Scan.domain.PlanRules
 import com.example.MobileM2.Net_Scan.domain.PlanWall
@@ -34,6 +35,7 @@ import com.example.MobileM2.Net_Scan.domain.SignalSource
 import com.example.MobileM2.Net_Scan.domain.Visit
 import com.example.MobileM2.Net_Scan.domain.VisitRepository
 import com.example.MobileM2.Net_Scan.domain.analyzeCoverage
+import com.example.MobileM2.Net_Scan.domain.measurementNear
 import com.example.MobileM2.Net_Scan.domain.medianPoint
 import com.example.MobileM2.Net_Scan.domain.onPlan
 import com.example.MobileM2.Net_Scan.domain.scaleFrom
@@ -118,8 +120,16 @@ sealed interface PlanState {
     /** Plan importé, échelle à régler avant de pouvoir mesurer. */
     data class NeedsScale(val plan: FloorPlan) : PlanState
 
-    /** [walls] : murs tracés, du plus ancien au plus récent ; la heatmap les contourne. */
-    data class Ready(val plan: FloorPlan, val map: FloorMap, val walls: List<PlanWall> = emptyList()) : PlanState
+    /**
+     * [walls] : murs tracés, du plus ancien au plus récent ; la heatmap les contourne.
+     * [measurements] : scans placés sur le plan, pour retrouver celui qu'on touche.
+     */
+    data class Ready(
+        val plan: FloorPlan,
+        val map: FloorMap,
+        val walls: List<PlanWall> = emptyList(),
+        val measurements: List<PlanMeasurement> = emptyList(),
+    ) : PlanState
 
     data object Error : PlanState
 }
@@ -220,6 +230,8 @@ class MapScanViewModel(
     private val mutableImport = MutableStateFlow(ImportStatus.IDLE)
     private val mutableWallEditor = MutableStateFlow<WallEditor?>(null)
     private val showCoverage = MutableStateFlow(false)
+    private val selectedScanId = MutableStateFlow<Long?>(null)
+    private val mutableDeletionFailed = MutableStateFlow(false)
     /** Position sur le plan retenue au lancement du scan réseau en cours (mode manuel). */
     private var scanPlanPosition: PlanPoint? = null
     private var active: ActiveRecording? = null
@@ -246,6 +258,14 @@ class MapScanViewModel(
         .stateIn(viewModelScope, SharingStarted.Eagerly, ScanHistoryState.Loading)
 
     fun retryHistory() { historyRefresh.value++ }
+
+    /** Scan choisi sur le plan ; disparaît de lui-même une fois supprimé. */
+    val selectedScan: StateFlow<NetScan?> = combine(selectedScanId, history) { id, history ->
+        if (id == null) null else (history as? ScanHistoryState.Success)?.scans?.firstOrNull { it.id == id }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** La dernière suppression d'un scan a échoué. */
+    val scanDeletionFailed: StateFlow<Boolean> = mutableDeletionFailed.asStateFlow()
 
     val visit: StateFlow<VisitState> = visitRepository.observeVisit(visitId)
         .map<Visit?, VisitState> { if (it == null) VisitState.Missing else VisitState.Loaded(it) }
@@ -282,7 +302,7 @@ class MapScanViewModel(
         when {
             plan == null -> PlanState.Missing
             plan.metersPerPixel == null -> PlanState.NeedsScale(plan)
-            else -> FloorMap.onPlan(plan, measurements, walls = walls)?.let { PlanState.Ready(plan, it, walls) }
+            else -> FloorMap.onPlan(plan, measurements, walls = walls)?.let { PlanState.Ready(plan, it, walls, measurements) }
                 ?: PlanState.NeedsScale(plan)
         }
     }
@@ -438,6 +458,60 @@ class MapScanViewModel(
         val ready = plan.value as? PlanState.Ready ?: return
         if (mutableNetScan.value is NetScanState.Running || mutableWallEditor.value != null || !ready.plan.contains(point)) return
         mutableManualPosition.value = point
+    }
+
+    /**
+     * Mode manuel : toucher du plan hors tracé des murs, à [tolerancePixels] près. Toucher une mesure
+     * enregistrée la choisit (pour la consulter ou la supprimer) ; ailleurs, place la personne.
+     */
+    fun tapPlan(point: PlanPoint, tolerancePixels: Float) {
+        val ready = plan.value as? PlanState.Ready ?: return
+        if (mutableWallEditor.value != null) return
+        val touched = measurementNear(ready.plan, point, ready.measurements, tolerancePixels)
+        if (touched != null) {
+            selectedScanId.value = touched.scanId
+            mutableDeletionFailed.value = false
+        } else {
+            selectedScanId.value = null
+            placeHere(point)
+        }
+    }
+
+    /** Mode manuel : le scan choisi devient la position du prochain scan, pour mesurer au même endroit. */
+    fun measureAtSelectedScan() {
+        val id = selectedScanId.value ?: return
+        val point = (plan.value as? PlanState.Ready)?.measurements?.firstOrNull { it.scanId == id }?.point ?: return
+        selectedScanId.value = null
+        placeHere(point)
+    }
+
+    fun clearScanSelection() {
+        selectedScanId.value = null
+        mutableDeletionFailed.value = false
+    }
+
+    /** Supprime définitivement un scan enregistré, choisi sur le plan ou dans l'historique. */
+    fun deleteScan(id: Long) {
+        if (id == 0L) return
+        mutableDeletionFailed.value = false
+        viewModelScope.launch {
+            try {
+                netScanRepository.delete(id)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                logger.log(Level.WARNING, "Unable to delete a net scan", error)
+                mutableDeletionFailed.value = true
+                return@launch
+            }
+            if (selectedScanId.value == id) selectedScanId.value = null
+            // La carte en direct ne relit pas la base : on y retire la mesure nous-mêmes.
+            active?.let { recording ->
+                if (recording.measurements.removeAll { it.scanId == id }) recording.version++
+            }
+            val current = mutableNetScan.value
+            if (current is NetScanState.Completed && current.result.id == id) mutableNetScan.value = NetScanState.Idle
+        }
     }
 
     /** Mode manuel : affiche ou masque les zones à mesurer. */
@@ -777,19 +851,23 @@ class MapScanViewModel(
     private fun save(result: NetScan, moved: Boolean) {
         mutableNetScan.value = NetScanState.Completed(result, SaveState.SAVING, moved)
         viewModelScope.launch {
-            val outcome = try {
+            val savedId = try {
                 netScanRepository.save(result)
-                SaveState.SAVED
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
                 logger.log(Level.WARNING, "Unable to save net scan", error)
-                SaveState.FAILED
+                null
             }
-            if (outcome == SaveState.SAVED) place(result)
+            val saved = savedId?.let { result.copy(id = it) }
+            if (saved != null) place(saved)
             val current = mutableNetScan.value
             if (current is NetScanState.Completed && current.result == result) {
-                mutableNetScan.value = current.copy(saveState = outcome)
+                mutableNetScan.value = if (saved != null) {
+                    current.copy(result = saved, saveState = SaveState.SAVED)
+                } else {
+                    current.copy(saveState = SaveState.FAILED)
+                }
             }
         }
     }
@@ -798,7 +876,7 @@ class MapScanViewModel(
     private fun place(result: NetScan) {
         val position = result.position ?: return
         val recording = scanRecording?.takeIf { it.id == result.recordingId } ?: return
-        recording.measurements += MapMeasurement(position, result.summary.level)
+        recording.measurements += MapMeasurement(position, result.summary.level, result.id)
         recording.version++
     }
 

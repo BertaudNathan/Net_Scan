@@ -15,6 +15,7 @@ import com.example.MobileM2.Net_Scan.domain.ImportedPlan
 import com.example.MobileM2.Net_Scan.domain.MapMeasurement
 import com.example.MobileM2.Net_Scan.domain.MappingMode
 import com.example.MobileM2.Net_Scan.domain.NetScan
+import com.example.MobileM2.Net_Scan.domain.NetScanSummary
 import com.example.MobileM2.Net_Scan.domain.NetScanMode
 import com.example.MobileM2.Net_Scan.domain.NetScanRepository
 import com.example.MobileM2.Net_Scan.domain.NetworkTechnology
@@ -353,7 +354,7 @@ class MapScanViewModelTest {
         assertEquals(point(2f, 1f), saved.position)
         seconds(1)
         val ready = viewModel.map.value as MapState.Ready
-        assertEquals(listOf(MapMeasurement(point(2f, 1f), SignalLevel.HIGH)), ready.map.measurements)
+        assertEquals(listOf(MapMeasurement(point(2f, 1f), SignalLevel.HIGH, scanId = 1)), ready.map.measurements)
     }
 
     @Test fun withoutPositioningTheScanIsSavedOffTheMap() = vmTest {
@@ -536,6 +537,86 @@ class MapScanViewModelTest {
         runCurrent()
         viewModel.placeHere(PlanPoint(1.2f, 0.5f))
         assertNull(viewModel.manualPosition.value)
+    }
+
+    @Test fun aScanCanBeDeletedFromTheHistory() = vmTest {
+        source.signal.value = lte(rsrp = -90)
+        val viewModel = viewModel()
+        viewModel.selectMode(NetScanMode.Timer(20))
+        viewModel.startNetScan()
+        seconds(20)
+        val saved = (viewModel.netScan.value as NetScanState.Completed).result
+        assertEquals(1L, saved.id)
+
+        viewModel.deleteScan(saved.id)
+        runCurrent()
+        assertEquals(ScanHistoryState.Empty, viewModel.history.value)
+        // Le résultat affiché était celui du scan supprimé : il disparaît avec lui.
+        assertEquals(NetScanState.Idle, viewModel.netScan.value)
+        assertFalse(viewModel.scanDeletionFailed.value)
+    }
+
+    @Test fun aDeletedScanLeavesTheLiveMap() = vmTest {
+        source.signal.value = lte(rsrp = -70)
+        positions.state.value = tracking(2f, 1f)
+        val viewModel = viewModel()
+        viewModel.selectMode(NetScanMode.Timer(20))
+        viewModel.startNetScan()
+        seconds(21)
+        assertEquals(1, (viewModel.map.value as MapState.Ready).map.measurements.size)
+
+        viewModel.deleteScan(1L)
+        seconds(2)
+        assertTrue((viewModel.map.value as MapState.Ready).map.measurements.isEmpty())
+    }
+
+    @Test fun aFailedDeletionIsReportedAndKeepsTheScan() = vmTest {
+        netScans.updates.value = listOf(planScan(id = 7, PlanPoint(0.4f, 0.6f)))
+        netScans.failDelete = true
+        val viewModel = viewModel()
+        viewModel.deleteScan(7L)
+        runCurrent()
+        assertTrue(viewModel.scanDeletionFailed.value)
+        assertEquals(1, (viewModel.history.value as ScanHistoryState.Success).scans.size)
+    }
+
+    @Test fun tappingAScanOnThePlanSelectsItInsteadOfPlacingThePerson() = vmTest {
+        manualVisit()
+        val scan = planScan(id = 7, PlanPoint(0.4f, 0.6f))
+        netScans.saved += scan
+        netScans.updates.value = listOf(scan)
+        plans.measurements.value = listOf(PlanMeasurement(scan.planPosition!!, SignalLevel.HIGH, scanId = 7))
+        val viewModel = viewModel()
+
+        // 10 pixels à côté de la mesure : c'est elle qu'on touche.
+        viewModel.tapPlan(PlanPoint(0.405f, 0.6f), tolerancePixels = 20f)
+        runCurrent()
+        assertEquals(7L, viewModel.selectedScan.value?.id)
+        assertNull(viewModel.manualPosition.value)
+
+        viewModel.deleteScan(7L)
+        runCurrent()
+        assertNull(viewModel.selectedScan.value)
+        assertTrue(netScans.saved.isEmpty())
+
+        // Loin de toute mesure : la personne se place.
+        viewModel.tapPlan(PlanPoint(0.1f, 0.1f), tolerancePixels = 20f)
+        runCurrent()
+        assertNull(viewModel.selectedScan.value)
+        assertEquals(PlanPoint(0.1f, 0.1f), viewModel.manualPosition.value)
+    }
+
+    @Test fun aSelectedScanCanBeMeasuredAgainAtTheSamePlace() = vmTest {
+        manualVisit()
+        val scan = planScan(id = 3, PlanPoint(0.4f, 0.6f))
+        netScans.updates.value = listOf(scan)
+        plans.measurements.value = listOf(PlanMeasurement(scan.planPosition!!, SignalLevel.HIGH, scanId = 3))
+        val viewModel = viewModel()
+        viewModel.tapPlan(PlanPoint(0.4f, 0.6f), tolerancePixels = 20f)
+        viewModel.measureAtSelectedScan()
+        runCurrent()
+        assertNull(viewModel.selectedScan.value)
+        assertEquals(PlanPoint(0.4f, 0.6f), viewModel.manualPosition.value)
     }
 
     @Test fun theScansOnThePlanMakeItsHeatmap() = vmTest {
@@ -776,6 +857,17 @@ class MapScanViewModelTest {
 
     private fun point(x: Float, z: Float) = FloorPoint(x, z)
 
+    private fun planScan(id: Long, at: PlanPoint) = NetScan(
+        visitId = VISIT_ID,
+        startedAt = 0,
+        durationSeconds = 20,
+        mode = NetScanMode.Timer(20),
+        operatorName = "Orange",
+        summary = NetScanSummary(SignalLevel.HIGH, NetworkTechnology.LTE, -70.0, null, 20, null, 42),
+        planPosition = at,
+        id = id,
+    )
+
     private fun tracking(x: Float, z: Float) = PositionState.Tracking(FloorPose(FloorPoint(x, z), 0f))
 
     private fun lte(rsrp: Int, sinr: Int? = null) =
@@ -797,9 +889,17 @@ class MapScanViewModelTest {
             if (failRead) throw IllegalStateException("read failed")
             emitAll(updates.map { scans -> scans.filter { it.visitId == visitId } })
         }
-        override suspend fun save(scan: NetScan) {
+        var failDelete = false
+        override suspend fun save(scan: NetScan): Long {
             if (failSave) throw IllegalStateException("disk full")
-            saved += scan
+            val id = (saved.maxOfOrNull { it.id } ?: 0L) + 1
+            saved += scan.copy(id = id)
+            updates.value = saved.toList()
+            return id
+        }
+        override suspend fun delete(id: Long) {
+            if (failDelete) throw IllegalStateException("disk full")
+            saved.removeAll { it.id == id }
             updates.value = saved.toList()
         }
     }

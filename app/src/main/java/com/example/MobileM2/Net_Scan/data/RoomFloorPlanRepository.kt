@@ -28,7 +28,7 @@ class RoomFloorPlanRepository(
                 val x = scan.planX ?: return@mapNotNull null
                 val y = scan.planY ?: return@mapNotNull null
                 val level = SignalLevel.entries.firstOrNull { it.name == scan.level } ?: return@mapNotNull null
-                PlanMeasurement(PlanPoint(x, y), level)
+                PlanMeasurement(PlanPoint(x, y), level, scan.id)
             }
         }
 

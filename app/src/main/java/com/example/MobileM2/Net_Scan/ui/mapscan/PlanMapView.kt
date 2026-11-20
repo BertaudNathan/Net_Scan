@@ -66,6 +66,7 @@ import kotlinx.coroutines.withContext
  * (cible) et, pendant le réglage de l'échelle, les points d'étalonnage. Pendant le tracé des murs,
  * [wallChain] marque le début du prochain mur et [selectedWall] le mur choisi pour être effacé.
  * Avec [coverage], les zones à mesurer sont hachurées et les scans suggérés numérotés.
+ * [selectedScan] : identifiant du scan choisi, mis en évidence.
  * Toucher indique un point du plan, avec la tolérance d'un doigt en pixels du plan au zoom actuel ;
  * pincer zoome, glisser déplace, toucher deux fois revient à la vue d'ensemble.
  */
@@ -82,6 +83,7 @@ internal fun PlanMapView(
     wallChain: PlanPoint? = null,
     selectedWall: Long? = null,
     coverage: Coverage.Analyzed? = null,
+    selectedScan: Long? = null,
 ) {
     val image by produceState<ImageBitmap?>(null, plan.imagePath) {
         value = withContext(Dispatchers.IO) { loadPlanImage(plan.imagePath) }
@@ -210,8 +212,12 @@ internal fun PlanMapView(
                 if (map != null && scale != null) {
                     for (measurement in map.measurements) {
                         val center = toScreen(planPointOf(measurement.point, plan, scale))
-                        drawCircle(levelColors(measurement.level).container, radius, center)
-                        drawCircle(ink, radius, center, style = ring)
+                        val selected = selectedScan != null && measurement.scanId == selectedScan
+                        // Mesure choisie : plus grosse, cernée de la couleur de sélection des murs.
+                        val size = if (selected) radius * 1.6f else radius
+                        if (selected) drawCircle(PlanColors.selected, size + 4.dp.toPx(), center)
+                        drawCircle(levelColors(measurement.level).container, size, center)
+                        drawCircle(ink, size, center, style = ring)
                     }
                 }
                 calibration.map(::toScreen).let { points ->

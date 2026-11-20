@@ -13,8 +13,8 @@ import kotlinx.coroutines.flow.Flow
  */
 data class PlanPoint(val u: Float, val v: Float)
 
-/** Scan réseau placé à la main sur le plan. */
-data class PlanMeasurement(val point: PlanPoint, val level: SignalLevel)
+/** Scan réseau placé à la main sur le plan ; [scanId] : son identifiant en base, 0 s'il n'est pas connu. */
+data class PlanMeasurement(val point: PlanPoint, val level: SignalLevel, val scanId: Long = 0)
 
 /** Mur tracé à la main sur le plan, d'une extrémité à l'autre. */
 data class PlanWall(val id: Long, val start: PlanPoint, val end: PlanPoint)
@@ -97,6 +97,12 @@ fun wallNear(plan: FloorPlan, point: PlanPoint, walls: List<PlanWall>, tolerance
     walls.minByOrNull { plan.pixelDistance(plan.closestOn(it, point), point) }
         ?.takeIf { plan.pixelDistance(plan.closestOn(it, point), point) <= tolerancePixels }
 
+/** Mesure enregistrée la plus proche du point touché, à moins de [tolerancePixels]. */
+fun measurementNear(plan: FloorPlan, point: PlanPoint, measurements: List<PlanMeasurement>, tolerancePixels: Float): PlanMeasurement? =
+    measurements.filter { it.scanId != 0L }
+        .minByOrNull { plan.pixelDistance(it.point, point) }
+        ?.takeIf { plan.pixelDistance(it.point, point) <= tolerancePixels }
+
 /**
  * Cases de la grille traversées par les murs, dans le plan. Les cases d'un même mur se touchent au
  * moins par un coin, ce qui suffit à le rendre infranchissable (voir [buildHeatmap]). Vide sans échelle.
@@ -130,7 +136,7 @@ fun FloorMap.Companion.onPlan(
     walls: List<PlanWall> = emptyList(),
 ): FloorMap? {
     val (cols, rows) = plan.gridBounds(grid) ?: return null
-    val placed = measurements.mapNotNull { m -> plan.toMeters(m.point)?.let { MapMeasurement(it, m.level) } }
+    val placed = measurements.mapNotNull { m -> plan.toMeters(m.point)?.let { MapMeasurement(it, m.level, m.scanId) } }
     val blocked = wallCells(plan, walls, grid)
     val near = accessibleArea(placed.map { listOf(it.point) }, grid, radius = MapRules.ESTIMATE_RADIUS)
     val area = near.filterTo(HashSet()) { it.col in 0 until cols && it.row in 0 until rows && it !in blocked }

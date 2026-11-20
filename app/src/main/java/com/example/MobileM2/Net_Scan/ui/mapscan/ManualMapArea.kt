@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import com.example.MobileM2.Net_Scan.R
 import com.example.MobileM2.Net_Scan.domain.Coverage
 import com.example.MobileM2.Net_Scan.domain.CoverageRules
+import com.example.MobileM2.Net_Scan.domain.NetScan
 import com.example.MobileM2.Net_Scan.domain.NetScanMode
 import com.example.MobileM2.Net_Scan.domain.PlanPoint
 import com.example.MobileM2.Net_Scan.ui.theme.Design
@@ -72,9 +73,14 @@ import kotlin.math.roundToInt
 /** Actions propres au mode manuel. */
 internal class PlanActions(
     val importPlan: () -> Unit,
-    val placeHere: (PlanPoint) -> Unit,
+    /** Toucher du plan : choisit la mesure touchée, sinon place la personne. */
+    val tap: (PlanPoint, Float) -> Unit,
     val setScale: (PlanPoint, PlanPoint, Float) -> Boolean,
     val toggleCoverage: () -> Unit,
+    val measureAtSelected: () -> Unit,
+    val clearSelection: () -> Unit,
+    /** Demande la suppression d'un scan, à confirmer. */
+    val deleteScan: (NetScan) -> Unit,
 )
 
 /** Tracé des murs sur le plan. */
@@ -102,6 +108,8 @@ internal fun ManualMapArea(
     netScan: NetScanState,
     wallEditor: WallEditor?,
     coverage: CoverageState,
+    selectedScan: NetScan?,
+    deletionFailed: Boolean,
     actions: MapActions,
     planActions: PlanActions,
     wallActions: WallActions,
@@ -147,6 +155,7 @@ internal fun ManualMapArea(
                     wallChain = editor?.chainStart,
                     selectedWall = editor?.selected,
                     coverage = analyzed,
+                    selectedScan = selectedScan?.id?.takeIf { !calibrating && editor == null },
                     contentPadding = PaddingValues(
                         start = Design.spaceSmall,
                         end = Design.spaceSmall,
@@ -160,7 +169,7 @@ internal fun ManualMapArea(
                             editor != null -> wallActions.tap(point, tolerance)
                             !shownPlan.contains(point) -> Unit
                             calibrating -> if (calibration.size < 2) calibration += point
-                            netScan == NetScanState.Idle -> planActions.placeHere(point)
+                            netScan == NetScanState.Idle -> planActions.tap(point, tolerance)
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
@@ -203,7 +212,7 @@ internal fun ManualMapArea(
                 }
                 Row(modifier = Modifier.fillMaxWidth().heightIn(min = Design.touchTarget), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f)) {
-                        planInstruction(plan, calibrating, calibration.size, position, netScan, editor, coverage)?.let {
+                        planInstruction(plan, calibrating, calibration.size, position, netScan, editor, coverage, selectedScan != null)?.let {
                             StatusChip(it.text, warning = it.warning)
                         }
                     }
@@ -229,6 +238,8 @@ internal fun ManualMapArea(
                         },
                     )
                     editor != null -> WallControls(editor, canUndo = editor.chainStart != null || walls.isNotEmpty(), wallActions)
+                    plan is PlanState.Ready && netScan == NetScanState.Idle && selectedScan != null ->
+                        SelectedScanCard(selectedScan, deletionFailed, planActions)
                     plan is PlanState.Ready && netScan == NetScanState.Idle -> PlanScanControls(mode, position != null, actions)
                 }
             }
@@ -261,6 +272,7 @@ private fun planInstruction(
     netScan: NetScanState,
     editor: WallEditor?,
     coverage: CoverageState,
+    scanSelected: Boolean,
 ): Instruction? = when {
     netScan != NetScanState.Idle -> null
     calibrating -> Instruction(stringResource(if (points == 0) R.string.plan_scale_first else R.string.plan_scale_second))
@@ -272,6 +284,7 @@ private fun planInstruction(
         editor.chainStart == null -> Instruction(stringResource(R.string.plan_walls_first))
         else -> Instruction(stringResource(R.string.plan_walls_next))
     }
+    scanSelected -> Instruction(stringResource(R.string.plan_scan_selected))
     position != null -> Instruction(stringResource(R.string.plan_position_set))
     coverage is CoverageState.Shown -> coverageInstruction(coverage.coverage)
     coverage == CoverageState.Computing -> Instruction(stringResource(R.string.coverage_computing))
@@ -412,6 +425,42 @@ private fun PlanScanControls(mode: NetScanMode, positioned: Boolean, actions: Ma
             Icon(painterResource(R.drawable.ic_network_scan), contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(Design.spaceSmall))
             Text(stringResource(R.string.net_scan_start), textAlign = TextAlign.Center)
+        }
+    }
+}
+
+/**
+ * Mesure touchée sur le plan : son résultat, puis la supprimer (après confirmation), mesurer à
+ * nouveau au même endroit, ou revenir au plan.
+ */
+@Composable
+private fun SelectedScanCard(scan: NetScan, deletionFailed: Boolean, actions: PlanActions) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
+        shape = Design.cardShape,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Column(
+            modifier = Modifier.padding(Design.spaceMedium),
+            verticalArrangement = Arrangement.spacedBy(Design.spaceSmall),
+        ) {
+            ScanSummary(scan)
+            if (deletionFailed) {
+                Text(
+                    stringResource(R.string.scan_delete_failed),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Design.spaceExtraSmall, Alignment.End),
+                verticalArrangement = Arrangement.spacedBy(Design.spaceExtraSmall),
+            ) {
+                DestructiveButton(onClick = { actions.deleteScan(scan) }) { Text(stringResource(R.string.scan_delete)) }
+                TertiaryButton(onClick = actions.measureAtSelected) { Text(stringResource(R.string.scan_measure_here)) }
+                SecondaryButton(onClick = actions.clearSelection) { Text(stringResource(R.string.close)) }
+            }
         }
     }
 }

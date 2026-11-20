@@ -47,7 +47,12 @@ data class NetScan(
 
 interface NetScanRepository {
     fun observeForVisit(visitId: Long): Flow<List<NetScan>>
-    suspend fun save(scan: NetScan)
+
+    /** Enregistre le scan et retourne son identifiant en base. */
+    suspend fun save(scan: NetScan): Long
+
+    /** Supprime définitivement le scan : il disparaît de l'historique, de la carte et du rapport. */
+    suspend fun delete(id: Long)
 }
 
 /**

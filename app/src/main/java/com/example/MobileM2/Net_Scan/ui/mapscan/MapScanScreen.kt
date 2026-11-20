@@ -141,6 +141,10 @@ fun MapScanScreen(
     val manualPosition by viewModel.manualPosition.collectAsStateWithLifecycle()
     val wallEditor by viewModel.wallEditor.collectAsStateWithLifecycle()
     val coverage by viewModel.coverage.collectAsStateWithLifecycle()
+    val selectedScan by viewModel.selectedScan.collectAsStateWithLifecycle()
+    val deletionFailed by viewModel.scanDeletionFailed.collectAsStateWithLifecycle()
+    // Scan dont la suppression attend confirmation, choisi sur le plan ou dans l'historique.
+    var pendingDeletion by rememberSaveable { mutableStateOf<Long?>(null) }
     val manual = (visit as? VisitState.Loaded)?.visit?.mode == MappingMode.MANUAL
     var showLeave by rememberSaveable { mutableStateOf(false) }
     var showHistory by rememberSaveable { mutableStateOf(false) }
@@ -199,6 +203,8 @@ fun MapScanScreen(
                         netScan = netScan,
                         wallEditor = wallEditor,
                         coverage = coverage,
+                        selectedScan = selectedScan,
+                        deletionFailed = deletionFailed,
                         actions = MapActions(
                             startNetScan = startNetScan,
                             selectMode = viewModel::selectMode,
@@ -210,9 +216,12 @@ fun MapScanScreen(
                         ),
                         planActions = PlanActions(
                             importPlan = { planPicker.launch(arrayOf("image/*", "application/pdf")) },
-                            placeHere = viewModel::placeHere,
+                            tap = viewModel::tapPlan,
                             setScale = viewModel::setScale,
                             toggleCoverage = viewModel::toggleCoverage,
+                            measureAtSelected = viewModel::measureAtSelectedScan,
+                            clearSelection = viewModel::clearScanSelection,
+                            deleteScan = { pendingDeletion = it.id },
                         ),
                         wallActions = WallActions(
                             edit = viewModel::editWalls,
@@ -254,8 +263,23 @@ fun MapScanScreen(
     if (showHistory) {
         ScanHistoryDialog(
             state = history,
+            deletionFailed = deletionFailed,
             onDismiss = { showHistory = false },
             onRetry = viewModel::retryHistory,
+            onDelete = { pendingDeletion = it.id },
+        )
+    }
+
+    // Le scan à supprimer est relu dans l'historique : s'il a disparu entre-temps, plus rien à confirmer.
+    val toDelete = pendingDeletion?.let { id -> (history as? ScanHistoryState.Success)?.scans?.firstOrNull { it.id == id } }
+    if (toDelete != null) {
+        DeleteScanDialog(
+            scan = toDelete,
+            onConfirm = {
+                viewModel.deleteScan(toDelete.id)
+                pendingDeletion = null
+            },
+            onDismiss = { pendingDeletion = null },
         )
     }
 

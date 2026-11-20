@@ -38,7 +38,7 @@ class RoomNetScanRepository(private val dao: NetScanDao) : NetScanRepository {
             }
         }
 
-    override suspend fun save(scan: NetScan) {
+    override suspend fun save(scan: NetScan): Long =
         dao.insert(
             NetScanEntity(
                 visitId = scan.visitId,
@@ -60,5 +60,6 @@ class RoomNetScanRepository(private val dao: NetScanDao) : NetScanRepository {
                 planY = scan.planPosition?.v,
             ),
         )
-    }
+
+    override suspend fun delete(id: Long) = dao.delete(id)
 }

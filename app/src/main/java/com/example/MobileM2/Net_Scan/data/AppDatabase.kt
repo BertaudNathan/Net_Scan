@@ -257,6 +257,9 @@ interface NetScanDao {
             "ORDER BY startedAt, id",
     )
     fun observePlacedOnPlan(visitId: Long): Flow<List<NetScanEntity>>
+
+    @Query("DELETE FROM net_scans WHERE id = :id")
+    suspend fun delete(id: Long)
 }
 
 @Entity(tableName = "app_preferences")

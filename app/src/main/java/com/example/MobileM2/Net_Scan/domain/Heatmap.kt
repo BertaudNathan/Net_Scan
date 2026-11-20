@@ -85,8 +85,8 @@ private fun MutableSet<GridCell>.addDisc(center: FloorPoint, radius: Float, grid
     }
 }
 
-/** Scan réseau placé sur la carte. */
-data class MapMeasurement(val point: FloorPoint, val level: SignalLevel)
+/** Scan réseau placé sur la carte ; [scanId] : son identifiant en base, 0 s'il n'est pas connu. */
+data class MapMeasurement(val point: FloorPoint, val level: SignalLevel, val scanId: Long = 0)
 
 /**
  * Valeur d'une case : mesurée (couleur pleine) ou estimée. [confidence] vaut 1 pour une case

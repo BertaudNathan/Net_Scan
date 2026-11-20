@@ -62,6 +62,6 @@ class RoomRecordingRepository(
         val x = mapX ?: return null
         val z = mapZ ?: return null
         val signal = SignalLevel.entries.firstOrNull { it.name == level } ?: return null
-        return MapMeasurement(FloorPoint(x, z), signal)
+        return MapMeasurement(FloorPoint(x, z), signal, id)
     }
 }
