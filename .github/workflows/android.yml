@@ -1,7 +1,7 @@
 # CI/CD Net Scan
 # - build-and-test : tests unitaires (JVM), lint et APK debug, à chaque push et pull request.
 # - instrumented   : tests Android (Compose, Room, parcours) sur émulateur API 36 (= minSdk).
-# - release        : sur un tag v*, publie l'APK debug du prototype dans une release GitHub.
+# - release        : sur un tag v*, publie l'APK release (R8, signé) dans une release GitHub.
 name: Android CI
 
 on:
@@ -153,19 +153,71 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [build-and-test, instrumented]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
+    env:
+      RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+      RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+      RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+      RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
         with:
-          name: net-scan-debug-apk
-          path: apk
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: chmod +x gradlew
+
+      # app/build.gradle.kts lit la signature dans local.properties : on le recrée à partir des
+      # secrets du dépôt. Le keystore reste hors du dépôt, dans le dossier temporaire du runner.
+      - name: Préparer la clé de signature
+        run: |
+          for name in RELEASE_KEYSTORE_BASE64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret $name manquant : voir la section Release du README."
+              exit 1
+            fi
+          done
+          keystore="$RUNNER_TEMP/release.jks"
+          echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          {
+            echo "RELEASE_STORE_FILE=$keystore"
+            echo "RELEASE_STORE_PASSWORD=$RELEASE_STORE_PASSWORD"
+            echo "RELEASE_KEY_ALIAS=$RELEASE_KEY_ALIAS"
+            echo "RELEASE_KEY_PASSWORD=$RELEASE_KEY_PASSWORD"
+          } > local.properties
+
+      - name: APK release (R8 + signature)
+        run: ./gradlew :app:assembleRelease
+
+      - name: Vérifier la signature
+        run: |
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)
+          "$apksigner" verify --verbose app/build/outputs/apk/release/*.apk
+          mv app/build/outputs/apk/release/app-release.apk "net-scan-${GITHUB_REF_NAME}.apk"
+
+      # Indispensable pour relire les traces d'erreur obfusquées ; gardé hors de la release publique.
+      - name: Mapping R8
+        uses: actions/upload-artifact@v4
+        with:
+          name: net-scan-mapping-${{ github.ref_name }}
+          path: app/build/outputs/mapping/release/mapping.txt
+          retention-days: 90
 
       - name: Publier la release
         uses: softprops/action-gh-release@v2
         with:
-          files: apk/*.apk
+          files: net-scan-${{ github.ref_name }}.apk
           prerelease: true
           body: |
-            APK **debug** du prototype Net Scan, non signé pour le Play Store.
+            APK **release** du prototype Net Scan : réduit et obfusqué par R8, signé avec la clé de release.
             Installation manuelle uniquement (sources inconnues), pour test.
+
+      - name: Nettoyer la clé de signature
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks" local.properties

@@ -47,11 +47,16 @@ Le scan réseau demande la localisation précise (Android l'exige pour lire les 
 L'écran **Rapport** génère un PDF A4 à partir des mesures enregistrées, sans connexion, puis en affiche l'aperçu. Il peut être téléchargé (l'utilisateur choisit l'emplacement, par exemple Téléchargements) ou envoyé par e-mail (choix de l'application, PDF en pièce jointe). Le PDF contient :
 
 1. les informations de la visite et une synthèse client : nombre de points par niveau et points à couvrir en priorité ;
-2. une page **plan** : un cadre réservé au plan des locaux, les pastilles P1, P2… à la couleur de leur niveau à y reporter, et un encadré pour le **placement de l'antenne** (emplacement, hauteur et fixation, alimentation, remarques) ;
+2. une page **plan**, dessinée comme à l'écran (en thème clair) :
+   - en mode manuel, le plan importé avec, par-dessus, la heatmap (si l'échelle est réglée), les murs tracés et les points P1, P2… à leur place ;
+   - en mode ARCore, la carte vue de dessus du dernier parcours enregistré (celui que montre l'écran) : heatmap, sol vu sans estimation hachuré, obstacles, trajet, points numérotés et barre d'échelle ;
+   - sans plan ni parcours (ou si le plan est illisible), un cadre vide à compléter à la main, avec les pastilles P1, P2… à la couleur de leur niveau à y reporter.
+
+   Les points qui ne sont pas placés sur la carte (scan sans position, ou fait pendant un autre parcours) sont listés sous la carte, à reporter à la main. La page se termine par un encadré pour le **placement de l'antenne** (emplacement, hauteur et fixation, alimentation, remarques) ;
 3. le tableau des mesures (date, opérateur, technologie, niveau, durée) ;
 4. une annexe technique (RSRP, SINR, bande, cellule, nombre de lectures, mode).
 
-Les points sont numérotés dans l'ordre chronologique. La carte ARCore et la heatmap ne sont pas encore reprises dans le PDF : le cadre du plan est à compléter à la main. Seul le dernier PDF généré est conservé dans le cache de l'application ; il n'est envoyé nulle part sans action de l'utilisateur.
+Les points sont numérotés dans l'ordre chronologique. La heatmap du PDF est construite à partir des seuls points placés sur la carte, comme à l'écran. Seul le dernier PDF généré est conservé dans le cache de l'application ; il n'est envoyé nulle part sans action de l'utilisateur.
 
 La nature des obstacles (béton, rayonnage, chambre froide) n'est pas encore annotée : un mur tracé ou vu par la caméra arrête les estimations, quelle que soit son épaisseur.
 
@@ -80,6 +85,17 @@ Le workflow GitHub Actions [`.github/workflows/android.yml`](.github/workflows/a
 
 1. **Tests unitaires, lint et APK** : `testDebugUnitTest`, `lintDebug` (non bloquant pour l'instant, rapport publié) et `assembleDebug`. L'APK debug est téléchargeable dans les artefacts pendant 14 jours.
 2. **Tests instrumentés** : `connectedDebugAndroidTest` sur un émulateur API 36 sans caméra. Aucun test ne lit le vrai modem : les écrans utilisent la source simulée et le parcours complet écrit ses mesures directement en base.
-3. **Release** : un tag `v*` (par exemple `v0.2.0`) publie l'APK debug dans une pré-release GitHub, après la réussite des deux étapes précédentes.
+3. **Release** : un tag `v*` (par exemple `v0.2.0`), après la réussite des deux étapes précédentes, compile l'APK **release** (réduit et obfusqué par R8, signé avec la clé de release), vérifie sa signature et le publie dans une pré-release GitHub. Le fichier `mapping.txt`, qui permet de relire les traces d'erreur obfusquées, n'est pas publié dans la release : il reste dans les artefacts de l'exécution pendant 90 jours.
+
+   La clé de signature vient des secrets du dépôt (*Settings → Secrets and variables → Actions*), jamais du code :
+
+   | Secret | Contenu |
+   |---|---|
+   | `RELEASE_KEYSTORE_BASE64` | le keystore encodé en base64 (`[Convert]::ToBase64String([IO.File]::ReadAllBytes("chemin\vers\release.jks"))` sous PowerShell) |
+   | `RELEASE_STORE_PASSWORD` | mot de passe du keystore |
+   | `RELEASE_KEY_ALIAS` | alias de la clé |
+   | `RELEASE_KEY_PASSWORD` | mot de passe de la clé |
+
+   En local, les mêmes valeurs se mettent dans `local.properties` (non versionné) : `RELEASE_STORE_FILE`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`, puis `.\gradlew.bat :app:assembleRelease`.
 
 Les rapports de tests (HTML et XML) sont joints à chaque exécution, même en cas d'échec. Les tests ARCore, qui demandent un vrai téléphone et des déplacements, ne font pas partie de la CI : `MapScanScreenTest` utilise `SimulatedPositionSource`, et le parcours complet tourne sur un émulateur sans ARCore, donc sans carte.
