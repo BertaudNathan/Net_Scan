@@ -167,7 +167,7 @@ class AppDatabaseMigrationTest {
         val latest = recordings.observeLatest(9).first()!!
         assertEquals(mapOf(GridCell(1, 2) to 4f, GridCell(0, 0) to -2f), latest.cells)
         assertEquals(listOf(listOf(FloorPoint(0f, 0f), FloorPoint(1f, 0f))), latest.segments)
-        assertEquals(listOf(MapMeasurement(FloorPoint(1f, 0f), SignalLevel.HIGH)), latest.measurements)
+        assertEquals(listOf(MapMeasurement(FloorPoint(1f, 0f), SignalLevel.HIGH, scanId = 2)), latest.measurements)
     }
 
     @Test fun mainVersion4KeepsLeftHandednessAndGainsTheMap() = runBlocking {
@@ -246,7 +246,7 @@ class AppDatabaseMigrationTest {
         assertEquals("MANUAL", database.visitDao().observeAll().first().single().mappingMode)
         val plans = RoomFloorPlanRepository(database.floorPlanDao(), database.netScanDao())
         assertEquals(FloorPlan(6, "plan.png", 2000, 1000, 0.025f), plans.observePlan(6).first())
-        assertEquals(listOf(PlanMeasurement(PlanPoint(0.4f, 0.6f), SignalLevel.HIGH)), plans.observePlanMeasurements(6).first())
+        assertEquals(listOf(PlanMeasurement(PlanPoint(0.4f, 0.6f), SignalLevel.HIGH, scanId = 1)), plans.observePlanMeasurements(6).first())
         assertEquals(Handedness.RIGHT, RoomPreferencesRepository(database.preferencesDao()).observePreferences().first().handedness)
         // L'historique retrouve aussi la place de la mesure sur le plan.
         assertEquals(PlanPoint(0.4f, 0.6f), RoomNetScanRepository(database.netScanDao()).observeForVisit(6).first().single().planPosition)
