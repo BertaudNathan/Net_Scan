@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -70,6 +71,8 @@ import com.example.MobileM2.Net_Scan.ui.theme.Design
 import com.example.MobileM2.Net_Scan.ui.theme.PrimaryButton
 import com.example.MobileM2.Net_Scan.ui.theme.SecondaryButton
 import com.example.MobileM2.Net_Scan.ui.theme.TertiaryButton
+import com.example.MobileM2.Net_Scan.ui.theme.WidthClass
+import com.example.MobileM2.Net_Scan.ui.theme.currentWidthClass
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -106,24 +109,51 @@ fun ReportScreen(viewModel: ReportViewModel, onBack: () -> Unit) {
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbar) },
     ) { insets ->
+        val ready = state as? ReportState.Ready
+        val twoPanes = currentWidthClass() == WidthClass.EXPANDED && ready != null
         Box(Modifier.fillMaxSize().padding(insets), contentAlignment = Alignment.TopCenter) {
+            if (twoPanes && ready != null) {
+                // Tablette en paysage : résumé et actions à gauche, aperçu du PDF à droite ; chacun défile seul.
+                Row(
+                    modifier = Modifier.widthIn(max = Design.wideContentWidth).fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(Design.spaceLarge),
+                ) {
+                    Column(
+                        modifier = Modifier.width(Design.sidePaneWidth)
+                            .verticalScroll(rememberScrollState())
+                            .padding(start = Design.spaceLarge, top = Design.spaceLarge, bottom = Design.spaceLarge),
+                        verticalArrangement = Arrangement.spacedBy(Design.spaceLarge),
+                    ) {
+                        TitleRow(onBack)
+                        ReadyActions(
+                            state = ready,
+                            exporting = exporting,
+                            onDownload = { download.launch(ready.file.name) },
+                            onSend = { if (!sendByEmail(context, ready)) viewModel.noAppToSend() },
+                        )
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f)
+                            .verticalScroll(rememberScrollState())
+                            .padding(end = Design.spaceLarge, top = Design.spaceLarge, bottom = Design.spaceLarge),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(Design.spaceLarge),
+                    ) {
+                        Column(
+                            modifier = Modifier.widthIn(max = Design.contentWidth).fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(Design.spaceLarge),
+                        ) { ReadyPreview(ready) }
+                    }
+                }
+                return@Box
+            }
             Column(
                 modifier = Modifier.widthIn(max = Design.contentWidth).fillMaxWidth()
                     .verticalScroll(rememberScrollState())
                     .padding(Design.spaceLarge),
                 verticalArrangement = Arrangement.spacedBy(Design.spaceLarge),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack, modifier = Modifier.size(Design.touchTarget)) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.report_back))
-                    }
-                    Text(
-                        text = stringResource(R.string.report_screen_title),
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(start = Design.spaceSmall).semantics { heading() },
-                    )
-                }
+                TitleRow(onBack)
                 when (val current = state) {
                     ReportState.Loading -> Status(stringResource(R.string.report_generating), loading = true)
                     ReportState.Missing -> Status(stringResource(R.string.report_missing)) {
@@ -145,7 +175,28 @@ fun ReportScreen(viewModel: ReportViewModel, onBack: () -> Unit) {
 }
 
 @Composable
+private fun TitleRow(onBack: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onBack, modifier = Modifier.size(Design.touchTarget)) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.report_back))
+        }
+        Text(
+            text = stringResource(R.string.report_screen_title),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = Design.spaceSmall).semantics { heading() },
+        )
+    }
+}
+
+@Composable
 private fun Ready(state: ReportState.Ready, exporting: Boolean, onDownload: () -> Unit, onSend: () -> Unit) {
+    ReadyActions(state, exporting, onDownload, onSend)
+    ReadyPreview(state)
+}
+
+@Composable
+private fun ReadyActions(state: ReportState.Ready, exporting: Boolean, onDownload: () -> Unit, onSend: () -> Unit) {
     val report = state.report
     Summary(report)
     if (report.isEmpty) {
@@ -168,6 +219,10 @@ private fun Ready(state: ReportState.Ready, exporting: Boolean, onDownload: () -
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+@Composable
+private fun ReadyPreview(state: ReportState.Ready) {
     Text(
         text = stringResource(R.string.report_preview_title),
         style = MaterialTheme.typography.titleLarge,

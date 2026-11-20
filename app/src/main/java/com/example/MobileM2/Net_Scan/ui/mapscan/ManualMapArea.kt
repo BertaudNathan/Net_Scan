@@ -435,8 +435,14 @@ private fun PlanScanControls(mode: NetScanMode, positioned: Boolean, actions: Ma
  */
 @Composable
 private fun SelectedScanCard(scan: NetScan, deletionFailed: Boolean, actions: PlanActions) {
+    // Largeur d'une carte, centrée : sur tablette, le plan reste visible de part et d'autre.
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { SelectedScanContent(scan, deletionFailed, actions) }
+}
+
+@Composable
+private fun SelectedScanContent(scan: NetScan, deletionFailed: Boolean, actions: PlanActions) {
     Surface(
-        modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
+        modifier = Modifier.widthIn(max = Design.overlayWidth).fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
         shape = Design.cardShape,
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {

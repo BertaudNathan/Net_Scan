@@ -109,6 +109,7 @@ import com.example.MobileM2.Net_Scan.ui.theme.RecordColors
 import com.example.MobileM2.Net_Scan.ui.theme.SecondaryButton
 import com.example.MobileM2.Net_Scan.ui.theme.SignalColors
 import com.example.MobileM2.Net_Scan.ui.theme.TertiaryButton
+import com.example.MobileM2.Net_Scan.ui.theme.isTablet
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -151,7 +152,7 @@ fun MapScanScreen(
     val busy = recording is RecordingState.Recording || netScan is NetScanState.Running
     val context = LocalContext.current
 
-    LockPortrait()
+    VisitOrientation(manual)
     KeepScreenOn(busy)
     TrackingLossAlert(tracking = position is PositionState.Tracking, recording = recording is RecordingState.Recording)
 
@@ -1091,14 +1092,27 @@ private fun CenteredMessage(
     }
 }
 
-/** L'appareil photo et ARCore se tiennent à la verticale : l'écran reste en portrait sur téléphone. */
+/**
+ * Orientation de l'écran de visite. Sur téléphone, l'appareil photo et ARCore se tiennent à la
+ * verticale : portrait. Sur tablette, en mode manuel, l'écran suit la tablette (un plan en paysage
+ * s'y lit mieux). En mode ARCore, il reste dans l'orientation d'arrivée : tourner recréerait l'aperçu
+ * et ferait perdre le suivi en plein parcours.
+ */
 @Composable
-private fun LockPortrait() {
+private fun VisitOrientation(manual: Boolean) {
     val activity = LocalActivity.current ?: return
+    val orientation = when {
+        !isTablet() -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        manual -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        else -> ActivityInfo.SCREEN_ORIENTATION_LOCKED
+    }
     DisposableEffect(activity) {
         val previous = activity.requestedOrientation
-        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         onDispose { activity.requestedOrientation = previous }
+    }
+    DisposableEffect(activity, orientation) {
+        activity.requestedOrientation = orientation
+        onDispose {}
     }
 }
 

@@ -76,6 +76,10 @@ object Design {
     val iconSize = 24.dp
     val touchTarget = 48.dp
     val contentWidth = 640.dp
+    /** Largeur maximale d'une page sur grand écran (grille de cartes, deux volets). */
+    val wideContentWidth = 1200.dp
+    /** Volet latéral sur grand écran : résumé et actions à côté du contenu principal. */
+    val sidePaneWidth = 360.dp
     val cardShape = RoundedCornerShape(20.dp)
     val badgeShape = RoundedCornerShape(50)
     val previewWidth = 96.dp

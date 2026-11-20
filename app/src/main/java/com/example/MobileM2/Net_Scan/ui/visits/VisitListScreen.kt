@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.selection.selectable
@@ -69,6 +71,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -80,6 +83,8 @@ import com.example.MobileM2.Net_Scan.ui.theme.Design
 import com.example.MobileM2.Net_Scan.ui.theme.DestructiveButton
 import com.example.MobileM2.Net_Scan.ui.theme.PrimaryButton
 import com.example.MobileM2.Net_Scan.ui.theme.TertiaryButton
+import com.example.MobileM2.Net_Scan.ui.theme.WidthClass
+import com.example.MobileM2.Net_Scan.ui.theme.currentWidthClass
 import java.text.DateFormat
 import java.util.Date
 
@@ -93,6 +98,7 @@ fun VisitListScreen(
     var showCreation by rememberSaveable { mutableStateOf(false) }
     var showExit by rememberSaveable { mutableStateOf(false) }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val widthClass = currentWidthClass()
     val creationState by viewModel.creationState.collectAsStateWithLifecycle()
 
     BackHandler(enabled = !showCreation && !showExit) { showExit = true }
@@ -112,7 +118,8 @@ fun VisitListScreen(
                 ) {
                     PrimaryButton(
                         onClick = { showCreation = true },
-                        modifier = Modifier.fillMaxWidth(),
+                        // Sur tablette, un bouton large comme l'écran se lit mal : il garde une largeur de carte.
+                        modifier = Modifier.widthIn(max = if (widthClass.isWide) Design.overlayWidth else Dp.Unspecified).fillMaxWidth(),
                     ) {
                         Text(stringResource(R.string.new_scan), style = MaterialTheme.typography.labelLarge)
                     }
@@ -129,7 +136,12 @@ fun VisitListScreen(
                 onRetry = viewModel::retry,
                 onPreferences = onPreferences,
                 onOpenVisit = onOpenVisit,
-                modifier = Modifier.widthIn(max = Design.contentWidth).fillMaxSize(),
+                columns = when (widthClass) {
+                    WidthClass.COMPACT -> 1
+                    WidthClass.MEDIUM -> 2
+                    WidthClass.EXPANDED -> 3
+                },
+                modifier = Modifier.widthIn(max = if (widthClass.isWide) Design.wideContentWidth else Design.contentWidth).fillMaxSize(),
             )
         }
     }
@@ -166,6 +178,7 @@ private fun VisitList(
     onPreferences: () -> Unit,
     onOpenVisit: (Long) -> Unit,
     modifier: Modifier = Modifier,
+    columns: Int = 1,
 ) {
     Column(
         modifier = modifier.verticalScroll(rememberScrollState()).padding(
@@ -197,7 +210,11 @@ private fun VisitList(
             }
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(Design.spaceSmall)) {
+        // Le texte d'introduction garde une longueur de ligne lisible, même sur tablette.
+        Column(
+            modifier = Modifier.widthIn(max = Design.contentWidth),
+            verticalArrangement = Arrangement.spacedBy(Design.spaceSmall),
+        ) {
             Text(
                 text = stringResource(R.string.scans_title),
                 style = MaterialTheme.typography.headlineLarge,
@@ -244,7 +261,18 @@ private fun VisitList(
                     TertiaryButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
                 }
                 is VisitListState.Success -> {
-                    state.visits.forEach { visit -> VisitCard(visit, onClick = { onOpenVisit(visit.id) }) }
+                    // Sur grand écran, une grille : les cartes d'une même ligne prennent la même hauteur.
+                    state.visits.chunked(columns).forEach { row ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                            horizontalArrangement = Arrangement.spacedBy(Design.spaceMedium),
+                        ) {
+                            row.forEach { visit ->
+                                VisitCard(visit, onClick = { onOpenVisit(visit.id) }, modifier = Modifier.weight(1f).fillMaxHeight())
+                            }
+                            repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
                 }
             }
         }
@@ -253,9 +281,9 @@ private fun VisitList(
 }
 
 @Composable
-private fun VisitCard(visit: Visit, onClick: () -> Unit) {
+private fun VisitCard(visit: Visit, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier.fillMaxWidth()
             .clip(Design.cardShape)
             .clickable(onClickLabel = stringResource(R.string.open_visit), role = Role.Button, onClick = onClick),
         shape = Design.cardShape,
@@ -396,6 +424,7 @@ private fun CreateVisitDialog(
 ) {
     var building by rememberSaveable { mutableStateOf("") }
     var mode by rememberSaveable { mutableStateOf(MappingMode.ARCORE) }
+    val wide = currentWidthClass().isWide
     var client by rememberSaveable { mutableStateOf("") }
     var address by rememberSaveable { mutableStateOf("") }
     var showDiscard by rememberSaveable { mutableStateOf(false) }
@@ -426,7 +455,8 @@ private fun CreateVisitDialog(
             modifier = Modifier.fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing)
                 .imePadding(),
-            contentAlignment = Alignment.BottomCenter,
+            // Feuille du bas sur téléphone ; fenêtre centrée de la largeur d'une page sur tablette.
+            contentAlignment = if (wide) Alignment.Center else Alignment.BottomCenter,
         ) {
             Box(
                 modifier = Modifier.matchParentSize().pointerInput(building, client, address, state) {
@@ -434,7 +464,8 @@ private fun CreateVisitDialog(
                 },
             )
             Surface(
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.widthIn(max = if (wide) Design.contentWidth else Dp.Unspecified)
+                    .fillMaxWidth()
                     // Le fond reste visible en haut, même clavier ouvert : on peut toujours toucher à côté pour fermer.
                     .heightIn(max = maxHeight * SHEET_MAX_HEIGHT)
                     .semantics { paneTitle = dialogTitle }

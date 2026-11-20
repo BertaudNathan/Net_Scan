@@ -1,6 +1,7 @@
 package com.example.MobileM2.Net_Scan.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,7 +40,12 @@ import com.example.MobileM2.Net_Scan.R
 import com.example.MobileM2.Net_Scan.domain.Handedness
 import com.example.MobileM2.Net_Scan.domain.ThemeMode
 import com.example.MobileM2.Net_Scan.ui.theme.Design
+import com.example.MobileM2.Net_Scan.ui.theme.currentWidthClass
 
+/**
+ * Préférences : thème et main dominante. Sur téléphone, les deux sections se suivent ; sur tablette,
+ * la page prend toute la largeur et les sections sont côte à côte.
+ */
 @Composable
 fun PreferencesScreen(
     state: PreferencesState.Ready,
@@ -50,6 +56,30 @@ fun PreferencesScreen(
     BackHandler {
         if (!state.saving) onBack()
     }
+    val wide = currentWidthClass().isWide
+    val theme: @Composable (Modifier) -> Unit = { modifier ->
+        ChoiceSection(
+            title = R.string.theme_title,
+            description = R.string.theme_description,
+            options = ThemeMode.entries.map { it to themeLabel(it) },
+            selected = state.theme,
+            enabled = !state.saving,
+            onSelect = onThemeSelected,
+            modifier = modifier,
+        )
+    }
+    val handedness: @Composable (Modifier) -> Unit = { modifier ->
+        ChoiceSection(
+            title = R.string.handedness_title,
+            description = R.string.handedness_description,
+            options = Handedness.entries.map { it to handednessLabel(it) },
+            selected = state.handedness,
+            enabled = !state.saving,
+            onSelect = onHandednessSelected,
+            modifier = modifier,
+        )
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         containerColor = MaterialTheme.colorScheme.background,
@@ -59,7 +89,7 @@ fun PreferencesScreen(
             contentAlignment = Alignment.TopCenter,
         ) {
             Column(
-                modifier = Modifier.widthIn(max = Design.contentWidth).fillMaxWidth()
+                modifier = Modifier.widthIn(max = if (wide) Design.wideContentWidth else Design.contentWidth).fillMaxWidth()
                     .verticalScroll(rememberScrollState())
                     .padding(Design.spaceLarge),
                 verticalArrangement = Arrangement.spacedBy(Design.spaceLarge),
@@ -78,78 +108,14 @@ fun PreferencesScreen(
                         modifier = Modifier.padding(start = Design.spaceSmall).semantics { heading() },
                     )
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(Design.spaceSmall)) {
-                    Text(
-                        text = stringResource(R.string.theme_title),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.semantics { heading() },
-                    )
-                    Text(
-                        text = stringResource(R.string.theme_description),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-                Column(modifier = Modifier.selectableGroup()) {
-                    ThemeMode.entries.forEach { theme ->
-                        val label = when (theme) {
-                            ThemeMode.SYSTEM -> R.string.theme_system
-                            ThemeMode.LIGHT -> R.string.theme_light
-                            ThemeMode.DARK -> R.string.theme_dark
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth().sizeIn(minHeight = Design.touchTarget)
-                                .selectable(
-                                    selected = state.theme == theme,
-                                    enabled = !state.saving,
-                                    role = Role.RadioButton,
-                                    onClick = { onThemeSelected(theme) },
-                                )
-                                .padding(vertical = Design.spaceSmall),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(Design.spaceMedium),
-                        ) {
-                            RadioButton(selected = state.theme == theme, onClick = null, enabled = !state.saving)
-                            Text(text = stringResource(label), style = MaterialTheme.typography.bodyLarge)
-                        }
+                if (wide) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(Design.spaceExtraLarge)) {
+                        theme(Modifier.weight(1f))
+                        handedness(Modifier.weight(1f))
                     }
-                    Column(verticalArrangement = Arrangement.spacedBy(Design.spaceSmall)) {
-                        Text(
-                            text = stringResource(R.string.handedness_title),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.semantics { heading() },
-                        )
-                        Text(
-                            text = stringResource(R.string.handedness_description),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
-                    Column(modifier = Modifier.selectableGroup()) {
-                        Handedness.entries.forEach { handedness ->
-                            val label = when (handedness) {
-                                Handedness.RIGHT -> R.string.handedness_right
-                                Handedness.LEFT -> R.string.handedness_left
-                            }
-                            Row(
-                                modifier = Modifier.fillMaxWidth().sizeIn(minHeight = Design.touchTarget)
-                                    .selectable(
-                                        selected = state.handedness == handedness,
-                                        enabled = !state.saving,
-                                        role = Role.RadioButton,
-                                        onClick = { onHandednessSelected(handedness) },
-                                    )
-                                    .padding(vertical = Design.spaceSmall),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(Design.spaceMedium),
-                            ) {
-                                RadioButton(selected = state.handedness == handedness, onClick = null, enabled = !state.saving)
-                                Text(text = stringResource(label), style = MaterialTheme.typography.bodyLarge)
-                            }
-                        }
-                    }
+                } else {
+                    theme(Modifier.fillMaxWidth())
+                    handedness(Modifier.fillMaxWidth())
                 }
                 if (state.saving) {
                     Text(
@@ -167,4 +133,60 @@ fun PreferencesScreen(
             }
         }
     }
+}
+
+/** Titre, explication, puis un choix unique parmi [options] (valeur, libellé). */
+@Composable
+private fun <T> ChoiceSection(
+    @StringRes title: Int,
+    @StringRes description: Int,
+    options: List<Pair<T, Int>>,
+    selected: T,
+    enabled: Boolean,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(Design.spaceSmall)) {
+        Text(
+            text = stringResource(title),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.semantics { heading() },
+        )
+        Text(
+            text = stringResource(description),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Column(modifier = Modifier.selectableGroup()) {
+            options.forEach { (value, label) ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().sizeIn(minHeight = Design.touchTarget)
+                        .selectable(
+                            selected = selected == value,
+                            enabled = enabled,
+                            role = Role.RadioButton,
+                            onClick = { onSelect(value) },
+                        )
+                        .padding(vertical = Design.spaceSmall),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Design.spaceMedium),
+                ) {
+                    RadioButton(selected = selected == value, onClick = null, enabled = enabled)
+                    Text(text = stringResource(label), style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+        }
+    }
+}
+
+private fun themeLabel(theme: ThemeMode): Int = when (theme) {
+    ThemeMode.SYSTEM -> R.string.theme_system
+    ThemeMode.LIGHT -> R.string.theme_light
+    ThemeMode.DARK -> R.string.theme_dark
+}
+
+private fun handednessLabel(handedness: Handedness): Int = when (handedness) {
+    Handedness.RIGHT -> R.string.handedness_right
+    Handedness.LEFT -> R.string.handedness_left
 }
